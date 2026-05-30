@@ -75,12 +75,13 @@
         "hint": "留空则对所有群生效"
     },
     "group_topic_weights": {
-        "description": "群聊话题权重（历史/知识/预设）",
+        "description": "群聊话题权重（历史/知识/预设/自定义）",
         "type": "object",
         "default": {
-            "history": 40,
-            "knowledge": 35,
-            "preset": 25
+            "history": 30,
+            "knowledge": 25,
+            "preset": 20,
+            "custom": 25
         },
         "hint": "无需总和为100，按比例随机"
     },
@@ -142,13 +143,26 @@
         "hint": "留空则对所有好友生效"
     },
     "private_topic_weights": {
-        "description": "私聊话题权重（历史/知识/预设）",
+        "description": "私聊话题权重（历史/知识/预设/自定义）",
         "type": "object",
         "default": {
-            "history": 50,
-            "knowledge": 30,
-            "preset": 20
+            "history": 40,
+            "knowledge": 20,
+            "preset": 15,
+            "custom": 25
         }
+    },
+    "custom_topics": {
+        "description": "自定义话题主题列表（每个元素是一个话题方向）",
+        "type": "list",
+        "default": [
+            "聊一聊最近的热点新闻",
+            "分享一个你最近遇到的趣事",
+            "讨论一下你最喜欢的电影或音乐",
+            "说说你对未来的规划",
+            "谈谈你最喜欢的食物或旅行地"
+        ],
+        "hint": "当话题来源为「自定义」时，会随机选取一条作为主题，由LLM生成具体内容。如果LLM失败，则自动降级到预设话题。"
     },
     "llm_provider": {
         "description": "LLM 提供商（留空则用系统默认）",
