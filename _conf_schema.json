@@ -12,7 +12,7 @@
   "personality_custom": {
     "description": "自定义人格描述",
     "type": "text",
-    "default": ""
+    "default": "",
     "hint": "例如：你是一只傲娇的猫娘，说话带喵尾。"
   },
   "enable_context_history": {
@@ -138,13 +138,13 @@
   "llm_provider": {
     "description": "LLM 提供商",
     "type": "string",
-    "default": "openai"
+    "default": "openai",
     "hint": "如 openai/deepseek/custom，留空则使用系统默认"
   },
   "llm_api_key": {
     "description": "API Key",
     "type": "string",
-    "default": ""
+    "default": "",
     "hint": "留空则使用系统默认 LLM"
   },
   "llm_base_url": {
@@ -155,7 +155,7 @@
   "llm_model": {
     "description": "模型ID",
     "type": "string",
-    "default": ""
+    "default": "",
     "hint": "如 DeepSeek/deepseek-v4-flash"
   },
   "learning_status": {
