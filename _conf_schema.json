@@ -1,0 +1,174 @@
+{
+    "enabled": {
+        "description": "是否启用主动聊天（总开关）",
+        "type": "boolean",
+        "default": true
+    },
+    "personality_custom": {
+        "description": "自定义人格描述（留空则自动使用系统人设，再留空则使用默认）",
+        "type": "string",
+        "format": "textarea",
+        "default": "",
+        "hint": "例如：你是一只傲娇的猫娘，说话带喵尾。将优先于此选项。"
+    },
+    "enable_context_history": {
+        "description": "是否读取上下文历史消息来延续话题",
+        "type": "boolean",
+        "default": true,
+        "hint": "开启后，机器人会根据最近聊天记录生成相关话题"
+    },
+    "group_enabled": {
+        "description": "群聊主动聊天开关",
+        "type": "boolean",
+        "default": true
+    },
+    "group_check_interval": {
+        "description": "群聊检查间隔（分钟）",
+        "type": "integer",
+        "default": 15,
+        "min": 1,
+        "max": 1440
+    },
+    "group_jitter": {
+        "description": "群聊波动时间（分钟）",
+        "type": "integer",
+        "default": 5,
+        "min": 0,
+        "max": 30
+    },
+    "group_probability": {
+        "description": "群聊触发概率",
+        "type": "number",
+        "default": 0.3,
+        "min": 0,
+        "max": 1,
+        "step": 0.05
+    },
+    "group_min_interval": {
+        "description": "群聊最小间隔（分钟）",
+        "type": "integer",
+        "default": 60,
+        "min": 1,
+        "max": 1440
+    },
+    "group_isolation_time": {
+        "description": "群聊隔离时间（分钟）",
+        "type": "integer",
+        "default": 10,
+        "min": 0,
+        "max": 120
+    },
+    "group_start_time": {
+        "description": "群聊允许发言开始时间",
+        "type": "string",
+        "default": "08:00"
+    },
+    "group_end_time": {
+        "description": "群聊允许发言结束时间",
+        "type": "string",
+        "default": "23:00"
+    },
+    "group_allowed_ids": {
+        "description": "群聊白名单（群ID列表）",
+        "type": "list",
+        "default": [],
+        "hint": "留空则对所有群生效"
+    },
+    "group_topic_weights": {
+        "description": "群聊话题权重（历史/知识/预设）",
+        "type": "object",
+        "default": {
+            "history": 40,
+            "knowledge": 35,
+            "preset": 25
+        },
+        "hint": "无需总和为100，按比例随机"
+    },
+    "private_enabled": {
+        "description": "私聊主动聊天开关",
+        "type": "boolean",
+        "default": true
+    },
+    "private_check_interval": {
+        "description": "私聊检查间隔（分钟）",
+        "type": "integer",
+        "default": 20,
+        "min": 1,
+        "max": 1440
+    },
+    "private_jitter": {
+        "description": "私聊波动时间（分钟）",
+        "type": "integer",
+        "default": 5,
+        "min": 0,
+        "max": 30
+    },
+    "private_probability": {
+        "description": "私聊触发概率",
+        "type": "number",
+        "default": 0.2,
+        "min": 0,
+        "max": 1,
+        "step": 0.05
+    },
+    "private_min_interval": {
+        "description": "私聊最小间隔（分钟）",
+        "type": "integer",
+        "default": 120,
+        "min": 1,
+        "max": 1440
+    },
+    "private_isolation_time": {
+        "description": "私聊隔离时间（分钟）",
+        "type": "integer",
+        "default": 15,
+        "min": 0,
+        "max": 120
+    },
+    "private_start_time": {
+        "description": "私聊允许发言开始时间",
+        "type": "string",
+        "default": "08:00"
+    },
+    "private_end_time": {
+        "description": "私聊允许发言结束时间",
+        "type": "string",
+        "default": "23:00"
+    },
+    "private_allowed_ids": {
+        "description": "私聊白名单（用户ID列表）",
+        "type": "list",
+        "default": [],
+        "hint": "留空则对所有好友生效"
+    },
+    "private_topic_weights": {
+        "description": "私聊话题权重（历史/知识/预设）",
+        "type": "object",
+        "default": {
+            "history": 50,
+            "knowledge": 30,
+            "preset": 20
+        }
+    },
+    "llm_provider": {
+        "description": "LLM 提供商（留空则用系统默认）",
+        "type": "string",
+        "default": "",
+        "options": ["", "openai", "deepseek", "anthropic", "custom"]
+    },
+    "llm_api_key": {
+        "description": "API Key",
+        "type": "string",
+        "default": ""
+    },
+    "llm_base_url": {
+        "description": "API Base URL",
+        "type": "string",
+        "default": ""
+    },
+    "llm_model": {
+        "description": "模型名称",
+        "type": "string",
+        "default": "gpt-3.5-turbo"
+    }
+}
