@@ -1,0 +1,5 @@
+name: proactive_chat
+version: 1.0.0
+author: L1uStark
+description: 让机器人主动发起聊天，支持群聊/私聊分离、独立话题池、上下文延续、自定义人格
+entry_point: main:ProactiveChatPlugin
