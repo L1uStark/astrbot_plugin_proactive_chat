@@ -1,6 +1,7 @@
 import logging
 from typing import Literal
 
+# 使用标准 logging 库即可
 logger = logging.getLogger(__name__)
 
 ChatType = Literal["group", "private"]
@@ -35,6 +36,7 @@ class LLMClient:
             logger.info("未配置独立 LLM API Key，将使用系统默认 LLM")
     
     def _init_client(self):
+        # ... (此方法保持不变) ...
         if self.provider in ["openai", "deepseek", "custom"]:
             if AsyncOpenAI is None:
                 raise ImportError("请安装 openai: pip install openai")
@@ -50,10 +52,7 @@ class LLMClient:
             raise ValueError(f"不支持的 provider: {self.provider}")
     
     async def generate_response(self, topic_prompt: str, chat_type: ChatType) -> str:
-        """
-        根据话题提示生成主动聊天消息
-        topic_prompt: 话题描述（例如“聊一聊最近的热点新闻”或“根据历史消息：...”
-        """
+        # ... (此方法保持不变) ...
         if not self.client:
             raise ValueError("LLM 客户端未初始化或配置错误")
         
