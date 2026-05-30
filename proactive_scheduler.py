@@ -140,7 +140,6 @@ class ProactiveScheduler:
                 state.phase_start = now
                 logger.info(f"{chat_type} {chat_id} 进入第二阶段")
                 return
-            # 每8分钟掷骰一次
             if int(silent_minutes) % 8 == 0 and (now - state.last_message_time).seconds % 480 < 60:
                 if random.random() < prob1:
                     await self._trigger_speak(chat_id, chat_type, state)
@@ -162,23 +161,15 @@ class ProactiveScheduler:
         self.on_message_received(chat_id, chat_type)
 
     def _get_personality_text(self) -> str:
-        custom = self.config.get("personality_custom", "").strip()
-        if custom:
-            return custom
-        try:
-            personality = self.context.get_personality()
-            if personality and personality.description:
-                return personality.description
-        except Exception:
-            pass
-        return "一个友好的聊天机器人"
+        # 只使用自定义人格
+        return self.config.get("personality_custom", "").strip() or "一个友好的聊天机器人"
 
     def _get_llm_client(self):
         if self._llm_client is None:
             llm_provider = self.config.get("llm_provider", "")
             llm_api_key = self.config.get("llm_api_key", "")
             if not llm_provider or not llm_api_key:
-                return None
+                return None   # 降级到系统默认
             personality_text = self._get_personality_text()
             try:
                 self._llm_client = LLMClient(self.config, personality_text)
@@ -228,7 +219,6 @@ class ProactiveScheduler:
         items = list(weights.keys())
         probs = [weights[k] / total for k in items]
         source = random.choices(items, weights=probs, k=1)[0]
-        logger.info(f"选择话题来源: {source}")
 
         if source == "preset":
             message = self.topic_manager.get_preset_topic(chat_type)
