@@ -71,7 +71,8 @@
   "group_weight_history": {
     "description": "群聊话题权重：历史话题",
     "type": "int",
-    "default": 30
+    "default": 30,
+    "hint": "所有权重自动按比例计算，无需手动凑100"
   },
   "group_weight_knowledge": {
     "description": "群聊话题权重：知识话题",
@@ -137,7 +138,8 @@
   "private_weight_history": {
     "description": "私聊话题权重：历史话题",
     "type": "int",
-    "default": 40
+    "default": 40,
+    "hint": "所有权重自动按比例计算，无需手动凑100"
   },
   "private_weight_knowledge": {
     "description": "私聊话题权重：知识话题",
@@ -155,7 +157,7 @@
     "default": 25
   },
   "custom_topics": {
-    "description": "自定义话题关键词列表（每个元素是一个主题词，如“美食”、“原神”）",
+    "description": "自定义话题关键词列表（每个元素是一个主题词）",
     "type": "list",
     "default": [
       "美食",
@@ -165,9 +167,10 @@
     "hint": "LLM会根据选中的关键词生成主动聊天消息。如果LLM失败，则自动降级到预设话题。"
   },
   "llm_provider": {
-    "description": "LLM 提供商（留空则用系统默认，可选：openai/deepseek/anthropic/custom）",
+    "description": "LLM 提供商",
     "type": "string",
-    "default": ""
+    "default": "",
+    "hint": "留空则用系统默认，可选：openai/deepseek/anthropic/custom"
   },
   "llm_api_key": {
     "description": "API Key",
