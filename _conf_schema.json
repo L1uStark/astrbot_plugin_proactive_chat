@@ -1,56 +1,28 @@
 {
   "enabled": {
-    "description": "是否启用主动聊天（总开关）",
+    "description": "是否启用该插件（总开关）",
     "type": "bool",
     "default": true
   },
   "debug_log": {
-    "description": "是否输出详细调试日志（DEBUG级别）",
+    "description": "是否输出详细调试日志",
     "type": "bool",
-    "default": false,
-    "hint": "开启后会产生大量日志，用于排查问题；关闭则只输出INFO及以上级别"
+    "default": false
   },
   "personality_custom": {
-    "description": "自定义人格描述（留空则自动使用系统人设，再留空则使用默认）",
+    "description": "自定义人格描述（留空则使用系统人设）",
     "type": "text",
-    "default": "",
-    "hint": "例如：你是一只傲娇的猫娘，说话带喵尾。将优先于此选项。"
+    "default": ""
   },
   "enable_context_history": {
     "description": "是否读取上下文历史消息来延续话题",
     "type": "bool",
-    "default": true,
-    "hint": "开启后，机器人会根据最近聊天记录生成相关话题"
+    "default": true
   },
   "group_enabled": {
     "description": "群聊主动聊天开关",
     "type": "bool",
     "default": true
-  },
-  "group_check_interval": {
-    "description": "群聊检查间隔（分钟）",
-    "type": "int",
-    "default": 15
-  },
-  "group_jitter": {
-    "description": "群聊波动时间（分钟）",
-    "type": "int",
-    "default": 5
-  },
-  "group_probability": {
-    "description": "群聊触发概率",
-    "type": "float",
-    "default": 0.3
-  },
-  "group_min_interval": {
-    "description": "群聊最小间隔（分钟）",
-    "type": "int",
-    "default": 60
-  },
-  "group_isolation_time": {
-    "description": "群聊隔离时间（分钟）",
-    "type": "int",
-    "default": 10
   },
   "group_start_time": {
     "description": "群聊允许发言开始时间",
@@ -65,59 +37,37 @@
   "group_allowed_ids": {
     "description": "群聊白名单（群ID列表）",
     "type": "list",
-    "default": [],
-    "hint": "留空则对所有群生效"
+    "default": []
   },
-  "group_weight_history": {
-    "description": "群聊话题权重：历史话题",
+  "group_silence_wait": {
+    "description": "群聊静默等待时间（分钟）",
     "type": "int",
-    "default": 30,
-    "hint": "所有权重自动按比例计算，无需手动凑100"
+    "default": 10
   },
-  "group_weight_knowledge": {
-    "description": "群聊话题权重：知识话题",
+  "group_phase1_duration": {
+    "description": "群聊第一阶段窗口时长（分钟）",
     "type": "int",
-    "default": 25
+    "default": 40
   },
-  "group_weight_preset": {
-    "description": "群聊话题权重：预设话题",
-    "type": "int",
-    "default": 20
+  "group_phase1_prob": {
+    "description": "群聊第一阶段触发概率（0~1）",
+    "type": "float",
+    "default": 0.15
   },
-  "group_weight_custom": {
-    "description": "群聊话题权重：自定义话题",
+  "group_phase2_duration": {
+    "description": "群聊第二阶段窗口时长（分钟）",
     "type": "int",
-    "default": 25
+    "default": 60
+  },
+  "group_phase2_prob": {
+    "description": "群聊第二阶段触发概率（0~1）",
+    "type": "float",
+    "default": 0.6
   },
   "private_enabled": {
     "description": "私聊主动聊天开关",
     "type": "bool",
     "default": true
-  },
-  "private_check_interval": {
-    "description": "私聊检查间隔（分钟）",
-    "type": "int",
-    "default": 20
-  },
-  "private_jitter": {
-    "description": "私聊波动时间（分钟）",
-    "type": "int",
-    "default": 5
-  },
-  "private_probability": {
-    "description": "私聊触发概率",
-    "type": "float",
-    "default": 0.2
-  },
-  "private_min_interval": {
-    "description": "私聊最小间隔（分钟）",
-    "type": "int",
-    "default": 120
-  },
-  "private_isolation_time": {
-    "description": "私聊隔离时间（分钟）",
-    "type": "int",
-    "default": 15
   },
   "private_start_time": {
     "description": "私聊允许发言开始时间",
@@ -132,45 +82,62 @@
   "private_allowed_ids": {
     "description": "私聊白名单（用户ID列表）",
     "type": "list",
-    "default": [],
-    "hint": "留空则对所有好友生效"
+    "default": []
   },
-  "private_weight_history": {
-    "description": "私聊话题权重：历史话题",
+  "private_silence_wait": {
+    "description": "私聊静默等待时间（分钟）",
     "type": "int",
-    "default": 40,
-    "hint": "所有权重自动按比例计算，无需手动凑100"
+    "default": 10
   },
-  "private_weight_knowledge": {
-    "description": "私聊话题权重：知识话题",
+  "private_phase1_duration": {
+    "description": "私聊第一阶段窗口时长（分钟）",
+    "type": "int",
+    "default": 40
+  },
+  "private_phase1_prob": {
+    "description": "私聊第一阶段触发概率（0~1）",
+    "type": "float",
+    "default": 0.3
+  },
+  "private_phase2_duration": {
+    "description": "私聊第二阶段窗口时长（分钟）",
+    "type": "int",
+    "default": 60
+  },
+  "private_phase2_prob": {
+    "description": "私聊第二阶段触发概率（0~1）",
+    "type": "float",
+    "default": 0.8
+  },
+  "weight_history": {
+    "description": "历史话题权重",
+    "type": "int",
+    "default": 30
+  },
+  "weight_knowledge": {
+    "description": "知识话题权重",
+    "type": "int",
+    "default": 25
+  },
+  "weight_preset": {
+    "description": "预设话题权重",
     "type": "int",
     "default": 20
   },
-  "private_weight_preset": {
-    "description": "私聊话题权重：预设话题",
-    "type": "int",
-    "default": 15
-  },
-  "private_weight_custom": {
-    "description": "私聊话题权重：自定义话题",
+  "weight_custom": {
+    "description": "自定义话题权重",
     "type": "int",
     "default": 25
   },
   "custom_topics": {
-    "description": "自定义话题关键词列表（每个元素是一个主题词）",
+    "description": "自定义话题关键词列表",
     "type": "list",
-    "default": [
-      "美食",
-      "天气",
-      "原神"
-    ],
-    "hint": "LLM会根据选中的关键词生成主动聊天消息。如果LLM失败，则自动降级到预设话题。"
+    "default": ["美食", "天气", "原神"]
   },
   "llm_provider": {
-    "description": "LLM 提供商",
+    "description": "LLM 提供商（留空用系统默认）",
     "type": "string",
-    "default": "",
-    "hint": "留空则用系统默认，可选：openai/deepseek/anthropic/custom"
+    "default": ""
   },
   "llm_api_key": {
     "description": "API Key",
@@ -186,5 +153,10 @@
     "description": "模型名称",
     "type": "string",
     "default": "gpt-3.5-turbo"
+  },
+  "learning_status": {
+    "description": "学习状态（只读）",
+    "type": "text",
+    "default": "尚未学习，请等待首次每日学习任务运行。"
   }
 }
