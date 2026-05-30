@@ -10,9 +10,10 @@
     "default": false
   },
   "personality_custom": {
-    "description": "自定义人格描述（留空则使用系统人设）",
+    "description": "自定义人格描述",
     "type": "text",
     "default": ""
+    "hint": "例如：你是一只傲娇的猫娘，说话带喵尾。"
   },
   "enable_context_history": {
     "description": "是否读取上下文历史消息来延续话题",
@@ -102,7 +103,7 @@
   "private_phase2_duration": {
     "description": "私聊第二阶段窗口时长（分钟）",
     "type": "int",
-    "default": 60
+    "default": 64
   },
   "private_phase2_prob": {
     "description": "私聊第二阶段触发概率（0~1）",
@@ -112,22 +113,22 @@
   "weight_history": {
     "description": "历史话题权重",
     "type": "int",
-    "default": 30
+    "default": 1
   },
   "weight_knowledge": {
     "description": "知识话题权重",
     "type": "int",
-    "default": 25
+    "default": 1
   },
   "weight_preset": {
     "description": "预设话题权重",
     "type": "int",
-    "default": 20
+    "default": 1
   },
   "weight_custom": {
     "description": "自定义话题权重",
     "type": "int",
-    "default": 25
+    "default": 1
   },
   "custom_topics": {
     "description": "自定义话题关键词列表",
@@ -135,24 +136,27 @@
     "default": ["美食", "天气", "原神"]
   },
   "llm_provider": {
-    "description": "LLM 提供商（留空用系统默认）",
+    "description": "LLM 提供商",
     "type": "string",
-    "default": ""
+    "default": "openai"
+    "hint": "如 openai/deepseek/custom，留空则使用系统默认"
   },
   "llm_api_key": {
     "description": "API Key",
     "type": "string",
     "default": ""
+    "hint": "留空则使用系统默认 LLM"
   },
   "llm_base_url": {
-    "description": "API Base URL",
+    "description": "API Base URL（可选）",
     "type": "string",
     "default": ""
   },
   "llm_model": {
-    "description": "模型名称",
+    "description": "模型ID",
     "type": "string",
-    "default": "gpt-3.5-turbo"
+    "default": ""
+    "hint": "如 DeepSeek/deepseek-v4-flash"
   },
   "learning_status": {
     "description": "学习状态（只读）",
