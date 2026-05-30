@@ -17,7 +17,7 @@ class ProactiveScheduler:
     def __init__(self, plugin_instance):
         self.plugin = plugin_instance
         self.context = plugin_instance.context
-        self.config = plugin_instance.config          # ← 修复点
+        self.config = plugin_instance.config
 
         self.scheduler = AsyncIOScheduler()
         self.group_origins: Dict[str, Any] = {}
@@ -86,14 +86,21 @@ class ProactiveScheduler:
     async def _send_proactive_message(self, origin, chat_id: str, chat_type: ChatType):
         logger.info(f"开始为 {chat_type} {chat_id} 生成主动消息")
         
+        # 权重自适应：读取配置并自动归一化
         prefix = "group_" if chat_type == "group" else "private_"
-        weights = {
+        raw_weights = {
             "history": self.config.get(f"{prefix}weight_history", 30),
             "knowledge": self.config.get(f"{prefix}weight_knowledge", 25),
             "preset": self.config.get(f"{prefix}weight_preset", 20),
             "custom": self.config.get(f"{prefix}weight_custom", 25)
         }
-        
+        total = sum(raw_weights.values())
+        if total == 0:
+            # 全部为0时均匀分配
+            weights = {k: 25 for k in raw_weights}
+        else:
+            weights = {k: int(v / total * 100) for k, v in raw_weights.items()}  # 转成百分比整数，不影响random.choices
+
         source = self.topic_manager.select_source(weights)
         logger.info(f"为 {chat_type} {chat_id} 选择话题来源: {source} (权重分布: {weights})")
         
@@ -222,18 +229,29 @@ class ProactiveScheduler:
         await self._check_and_trigger_for_type("private")
     
     def start(self):
-        group_interval = self.config.get("group_check_interval", 15) * 60
-        private_interval = self.config.get("private_check_interval", 20) * 60
+        # 根据开关决定是否添加定时任务
+        if self.config.get("group_enabled", True):
+            group_interval = self.config.get("group_check_interval", 15) * 60
+            self.scheduler.add_job(
+                self._check_and_trigger_for_type, 'interval',
+                args=["group"], seconds=group_interval, id='proactive_group'
+            )
+            logger.info(f"群聊主动聊天已启用，间隔 {group_interval//60} 分钟")
+        else:
+            logger.info("群聊主动聊天已关闭，跳过定时任务")
         
-        async def group_check():
-            await self._check_and_trigger_for_type("group")
-        async def private_check():
-            await self._check_and_trigger_for_type("private")
+        if self.config.get("private_enabled", True):
+            private_interval = self.config.get("private_check_interval", 20) * 60
+            self.scheduler.add_job(
+                self._check_and_trigger_for_type, 'interval',
+                args=["private"], seconds=private_interval, id='proactive_private'
+            )
+            logger.info(f"私聊主动聊天已启用，间隔 {private_interval//60} 分钟")
+        else:
+            logger.info("私聊主动聊天已关闭，跳过定时任务")
         
-        self.scheduler.add_job(group_check, 'interval', seconds=group_interval, id='proactive_group')
-        self.scheduler.add_job(private_check, 'interval', seconds=private_interval, id='proactive_private')
         self.scheduler.start()
-        logger.info(f"主动调度器启动: 群聊间隔 {group_interval//60} 分钟, 私聊间隔 {private_interval//60} 分钟")
+        logger.info("主动调度器启动完成")
     
     def stop(self):
         self.scheduler.shutdown()
