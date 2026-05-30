@@ -1,4 +1,10 @@
-name: "主动聊天插件"
+name: "proactive_chat"
 version: "1.0.0"
 author: "L1uStark"
-description: "让机器人主动发起聊天，支持独立 LLM、话题权重和定时触发"
+description: "让机器人像群友一样主动发起聊天，支持独立LLM、话题权重和定时触发"
+display_name: "主动聊天插件"
+short_desc: "机器人主动发言插件"
+support_platforms:
+  - aiocqhttp
+  - telegram
+  - lark
