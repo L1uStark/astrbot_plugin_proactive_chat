@@ -1,4 +1,4 @@
-#怕寂寞的AstrBot (Proactive Chat)
+# 怕寂寞的AstrBot (Proactive Chat)
 
 让机器人像真正的群友一样，在群聊或私聊中**主动打破沉默**。支持沉默触发、多阶段概率、自我学习、群私分离、自定义人格与独立 LLM。
 
