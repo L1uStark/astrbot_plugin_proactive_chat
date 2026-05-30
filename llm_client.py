@@ -25,7 +25,14 @@ class LLMClient:
         
         self.client = None
         if self.provider and self.api_key:
-            self._init_client()
+            try:
+                self._init_client()
+                logger.info(f"独立 LLM 客户端初始化成功: provider={self.provider}, model={self.model}")
+            except Exception as e:
+                logger.error(f"独立 LLM 客户端初始化失败: {e}")
+                self.client = None
+        else:
+            logger.info("未配置独立 LLM API Key，将使用系统默认 LLM")
     
     def _init_client(self):
         if self.provider in ["openai", "deepseek", "custom"]:
@@ -42,26 +49,27 @@ class LLMClient:
         else:
             raise ValueError(f"不支持的 provider: {self.provider}")
     
-    async def generate_response(self, topic: str, chat_type: ChatType) -> str:
-        if chat_type == "group":
-            audience = "大家"
-        else:
-            audience = "你"
+    async def generate_response(self, topic_prompt: str, chat_type: ChatType) -> str:
+        """
+        根据话题提示生成主动聊天消息
+        topic_prompt: 话题描述（例如“聊一聊最近的热点新闻”或“根据历史消息：...”
+        """
+        if not self.client:
+            raise ValueError("LLM 客户端未初始化或配置错误")
+        
+        audience = "大家" if chat_type == "group" else "你"
         
         system_prompt = (
             f"你是一个聊天机器人，你的人设是：{self.system_personality}\n"
             f"请严格遵循以下要求：\n"
-            f"1. 根据话题生成一句自然的主动聊天消息，对象是{audience}。\n"
+            f"1. 根据话题提示生成一句自然的主动聊天消息，对象是{audience}。\n"
             f"2. 语气贴合人设，不要提及自己是AI。\n"
             f"3. 语言简短自然，不超过50字。\n"
             f"4. 只输出消息内容，不要加任何引号或额外说明。"
         )
-        user_prompt = f"话题：{topic}\n请生成主动聊天消息："
+        user_prompt = f"话题提示：{topic_prompt}\n请生成主动聊天消息："
         
         try:
-            if not self.client:
-                raise ValueError("LLM 客户端未初始化")
-            
             if self.provider == "anthropic":
                 response = await self.client.messages.create(
                     model=self.model,
@@ -69,7 +77,7 @@ class LLMClient:
                     system=system_prompt,
                     messages=[{"role": "user", "content": user_prompt}]
                 )
-                return response.content[0].text.strip()
+                result = response.content[0].text.strip()
             else:
                 response = await self.client.chat.completions.create(
                     model=self.model,
@@ -80,7 +88,10 @@ class LLMClient:
                     temperature=0.7,
                     max_tokens=100
                 )
-                return response.choices[0].message.content.strip()
+                result = response.choices[0].message.content.strip()
+            
+            logger.info(f"LLM 生成成功: {result[:50]}...")
+            return result
         except Exception as e:
-            logger.error(f"LLM 生成失败: {e}")
-            return "今天想随便聊聊~"
+            logger.error(f"LLM 生成失败: {type(e).__name__}: {str(e)}")
+            raise
