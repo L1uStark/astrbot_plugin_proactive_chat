@@ -30,38 +30,27 @@
     "group_check_interval": {
         "description": "群聊检查间隔（分钟）",
         "type": "int",
-        "default": 15,
-        "min": 1,
-        "max": 1440
+        "default": 15
     },
     "group_jitter": {
         "description": "群聊波动时间（分钟）",
         "type": "int",
-        "default": 5,
-        "min": 0,
-        "max": 30
+        "default": 5
     },
     "group_probability": {
         "description": "群聊触发概率",
         "type": "float",
-        "default": 0.3,
-        "min": 0,
-        "max": 1,
-        "step": 0.05
+        "default": 0.3
     },
     "group_min_interval": {
         "description": "群聊最小间隔（分钟）",
         "type": "int",
-        "default": 60,
-        "min": 1,
-        "max": 1440
+        "default": 60
     },
     "group_isolation_time": {
         "description": "群聊隔离时间（分钟）",
         "type": "int",
-        "default": 10,
-        "min": 0,
-        "max": 120
+        "default": 10
     },
     "group_start_time": {
         "description": "群聊允许发言开始时间",
@@ -76,9 +65,6 @@
     "group_allowed_ids": {
         "description": "群聊白名单（群ID列表）",
         "type": "list",
-        "items": {
-            "type": "string"
-        },
         "default": [],
         "hint": "留空则对所有群生效"
     },
@@ -101,38 +87,27 @@
     "private_check_interval": {
         "description": "私聊检查间隔（分钟）",
         "type": "int",
-        "default": 20,
-        "min": 1,
-        "max": 1440
+        "default": 20
     },
     "private_jitter": {
         "description": "私聊波动时间（分钟）",
         "type": "int",
-        "default": 5,
-        "min": 0,
-        "max": 30
+        "default": 5
     },
     "private_probability": {
         "description": "私聊触发概率",
         "type": "float",
-        "default": 0.2,
-        "min": 0,
-        "max": 1,
-        "step": 0.05
+        "default": 0.2
     },
     "private_min_interval": {
         "description": "私聊最小间隔（分钟）",
         "type": "int",
-        "default": 120,
-        "min": 1,
-        "max": 1440
+        "default": 120
     },
     "private_isolation_time": {
         "description": "私聊隔离时间（分钟）",
         "type": "int",
-        "default": 15,
-        "min": 0,
-        "max": 120
+        "default": 15
     },
     "private_start_time": {
         "description": "私聊允许发言开始时间",
@@ -147,9 +122,6 @@
     "private_allowed_ids": {
         "description": "私聊白名单（用户ID列表）",
         "type": "list",
-        "items": {
-            "type": "string"
-        },
         "default": [],
         "hint": "留空则对所有好友生效"
     },
@@ -164,11 +136,8 @@
         }
     },
     "custom_topics": {
-        "description": "自定义话题关键词列表（每个元素是一个主题词，如“美食”、“原神”）",
+        "description": "自定义话题关键词列表（每个元素是一个主题词）",
         "type": "list",
-        "items": {
-            "type": "string"
-        },
         "default": [
             "美食",
             "天气",
@@ -177,10 +146,9 @@
         "hint": "LLM会根据选中的关键词生成主动聊天消息。如果LLM失败，则自动降级到预设话题。"
     },
     "llm_provider": {
-        "description": "LLM 提供商（留空则用系统默认）",
+        "description": "LLM 提供商（留空则用系统默认，可选：openai/deepseek/anthropic/custom）",
         "type": "string",
-        "default": "",
-        "options": ["", "openai", "deepseek", "anthropic", "custom"]
+        "default": ""
     },
     "llm_api_key": {
         "description": "API Key",
