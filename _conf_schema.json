@@ -21,7 +21,7 @@
     "default": true
   },
   "group_enabled": {
-    "description": "群聊主动聊天开关",
+    "description": "群聊主动发言",
     "type": "bool",
     "default": true
   },
@@ -38,7 +38,8 @@
   "group_allowed_ids": {
     "description": "群聊白名单（群ID列表）",
     "type": "list",
-    "default": []
+    "default": [123456789],
+    "hint": "留空则为全部群聊"
   },
   "group_silence_wait": {
     "description": "群聊静默等待时间（分钟）",
@@ -66,7 +67,7 @@
     "default": 0.6
   },
   "private_enabled": {
-    "description": "私聊主动聊天开关",
+    "description": "私聊主动发言",
     "type": "bool",
     "default": true
   },
@@ -83,7 +84,8 @@
   "private_allowed_ids": {
     "description": "私聊白名单（用户ID列表）",
     "type": "list",
-    "default": []
+    "default": [987654321],
+    "hint": "留空则为全部私聊"
   },
   "private_silence_wait": {
     "description": "私聊静默等待时间（分钟）",
@@ -103,7 +105,7 @@
   "private_phase2_duration": {
     "description": "私聊第二阶段窗口时长（分钟）",
     "type": "int",
-    "default": 64
+    "default": 60
   },
   "private_phase2_prob": {
     "description": "私聊第二阶段触发概率（0~1）",
