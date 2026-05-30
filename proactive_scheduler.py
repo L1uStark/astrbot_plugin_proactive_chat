@@ -1,8 +1,7 @@
 import asyncio
 import random
-from datetime import datetime
-from typing import Dict, Any, Literal
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from datetime import datetime, timedelta
+from typing import Dict, Literal
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Plain
@@ -10,8 +9,16 @@ from astrbot.api.message_components import Plain
 from .utils import time_str_to_minutes
 from .topic_manager import TopicManager
 from .llm_client import LLMClient
+from .learner import SilenceLearner
 
 ChatType = Literal["group", "private"]
+
+class SessionState:
+    def __init__(self):
+        self.last_message_time = None
+        self.phase = "waiting"
+        self.phase_start = None
+        self.origin = None
 
 class ProactiveScheduler:
     def __init__(self, plugin_instance):
@@ -19,30 +26,151 @@ class ProactiveScheduler:
         self.context = plugin_instance.context
         self.config = plugin_instance.config
 
-        self.scheduler = AsyncIOScheduler()
-        self.group_origins: Dict[str, Any] = {}
-        self.private_origins: Dict[str, Any] = {}
-        self.group_last_chat: Dict[str, datetime] = {}
-        self.private_last_chat: Dict[str, datetime] = {}
-        self.group_last_msg: Dict[str, datetime] = {}
-        self.private_last_msg: Dict[str, datetime] = {}
-        
+        self.group_sessions: Dict[str, SessionState] = {}
+        self.private_sessions: Dict[str, SessionState] = {}
+
         self.topic_manager = TopicManager(plugin_instance)
+        self.learner = SilenceLearner(plugin_instance)
         self._llm_client = None
+        self._running = False
+        self._task = None
+        self._learn_task = None
+
+    def start(self):
+        if self._running:
+            return
+        self._running = True
+        self._task = asyncio.create_task(self._loop())
+        self._learn_task = asyncio.create_task(self._daily_learn_scheduler())
+        logger.info("沉默触发调度器已启动，每日学习已安排")
+
+    def stop(self):
+        self._running = False
+        if self._task:
+            self._task.cancel()
+        if self._learn_task:
+            self._learn_task.cancel()
+        logger.info("沉默触发调度器已停止")
+
+    async def _daily_learn_scheduler(self):
+        while self._running:
+            now = datetime.now()
+            target = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            if target < now:
+                target += timedelta(days=1)
+            wait = (target - now).total_seconds()
+            await asyncio.sleep(wait)
+            try:
+                await self.learner.daily_learn("group")
+            except Exception as e:
+                logger.error(f"学习任务失败: {e}")
+
+    def register_origin(self, chat_id: str, chat_type: ChatType, origin):
+        sessions = self.group_sessions if chat_type == "group" else self.private_sessions
+        if chat_id not in sessions:
+            sessions[chat_id] = SessionState()
+        sessions[chat_id].origin = origin
+
+    def on_message_received(self, chat_id: str, chat_type: ChatType):
+        sessions = self.group_sessions if chat_type == "group" else self.private_sessions
+        if chat_id not in sessions:
+            sessions[chat_id] = SessionState()
+        state = sessions[chat_id]
+        state.last_message_time = datetime.now()
+        state.phase = "waiting"
+        state.phase_start = None
+
+    async def _loop(self):
+        while self._running:
+            await asyncio.sleep(60)
+            if not self.config.get("enabled", True):
+                continue
+            try:
+                await self._check_all("group")
+                await self._check_all("private")
+            except Exception as e:
+                logger.error(f"调度循环出错: {e}")
+
+    async def _check_all(self, chat_type: ChatType):
+        if not self.config.get(f"{chat_type}_enabled", True):
+            return
+        now = datetime.now()
+        start_key = f"{chat_type}_start_time"
+        end_key = f"{chat_type}_end_time"
+        start_min = time_str_to_minutes(self.config.get(start_key, "00:00"))
+        end_min = time_str_to_minutes(self.config.get(end_key, "23:59"))
+        now_min = now.hour * 60 + now.minute
+        if not (start_min <= now_min <= end_min):
+            return
+
+        allowed_ids = self.config.get(f"{chat_type}_allowed_ids", [])
+        sessions = self.group_sessions if chat_type == "group" else self.private_sessions
+
+        for chat_id, state in list(sessions.items()):
+            if allowed_ids and chat_id not in allowed_ids:
+                continue
+            if not state.origin:
+                continue
+            await self._process_session(chat_id, chat_type, state, now)
+
+    async def _process_session(self, chat_id: str, chat_type: ChatType, state: SessionState, now: datetime):
+        wait = self.learner.get_dynamic_param("silence_wait", self.config.get(f"{chat_type}_silence_wait", 10))
+        dur1 = self.learner.get_dynamic_param("phase1_duration", self.config.get(f"{chat_type}_phase1_duration", 40))
+        prob1 = self.learner.get_dynamic_param("phase1_prob", self.config.get(f"{chat_type}_phase1_prob", 0.15))
+        dur2 = self.learner.get_dynamic_param("phase2_duration", self.config.get(f"{chat_type}_phase2_duration", 60))
+        prob2 = self.learner.get_dynamic_param("phase2_prob", self.config.get(f"{chat_type}_phase2_prob", 0.6))
+
+        if state.last_message_time is None:
+            state.last_message_time = now
+            return
+
+        silent_minutes = (now - state.last_message_time).total_seconds() / 60
+
+        if state.phase == "waiting":
+            if silent_minutes >= wait:
+                state.phase = "phase1"
+                state.phase_start = now
+                logger.info(f"{chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
+            return
+
+        elif state.phase == "phase1":
+            elapsed1 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
+            if elapsed1 >= dur1:
+                state.phase = "phase2"
+                state.phase_start = now
+                logger.info(f"{chat_type} {chat_id} 进入第二阶段")
+                return
+            # 每8分钟掷骰一次
+            if int(silent_minutes) % 8 == 0 and (now - state.last_message_time).seconds % 480 < 60:
+                if random.random() < prob1:
+                    await self._trigger_speak(chat_id, chat_type, state)
+                    return
+
+        elif state.phase == "phase2":
+            elapsed2 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
+            if elapsed2 >= dur2:
+                logger.info(f"{chat_type} {chat_id} 第二阶段超时，强制发言")
+                await self._trigger_speak(chat_id, chat_type, state)
+                return
+            if int(silent_minutes) % 8 == 0 and (now - state.last_message_time).seconds % 480 < 60:
+                if random.random() < prob2:
+                    await self._trigger_speak(chat_id, chat_type, state)
+                    return
+
+    async def _trigger_speak(self, chat_id: str, chat_type: ChatType, state: SessionState):
+        await self._send_proactive_message(state.origin, chat_id, chat_type)
+        self.on_message_received(chat_id, chat_type)
 
     def _get_personality_text(self) -> str:
         custom = self.config.get("personality_custom", "").strip()
         if custom:
-            logger.debug("使用自定义人格")
             return custom
         try:
             personality = self.context.get_personality()
             if personality and personality.description:
-                logger.debug("使用系统人设")
                 return personality.description
-        except Exception as e:
-            logger.debug(f"获取系统人设失败: {e}")
-        logger.debug("使用默认人格")
+        except Exception:
+            pass
         return "一个友好的聊天机器人"
 
     def _get_llm_client(self):
@@ -50,16 +178,12 @@ class ProactiveScheduler:
             llm_provider = self.config.get("llm_provider", "")
             llm_api_key = self.config.get("llm_api_key", "")
             if not llm_provider or not llm_api_key:
-                logger.info("未配置独立 LLM，将使用系统默认 LLM")
                 return None
             personality_text = self._get_personality_text()
             try:
                 self._llm_client = LLMClient(self.config, personality_text)
-                if self._llm_client.client is None:
-                    logger.warning("独立 LLM 客户端初始化失败，将降级使用系统默认 LLM")
-                    self._llm_client = None
             except Exception as e:
-                logger.error(f"独立 LLM 客户端创建失败: {e}")
+                logger.error(f"LLM客户端创建失败: {e}")
                 self._llm_client = None
         return self._llm_client
 
@@ -68,71 +192,65 @@ class ProactiveScheduler:
             llm_tools = self.context.get_llm_tools()
             if llm_tools:
                 personality_text = self._get_personality_text()
+                examples = self.learner.learned_params.get("example_phrases", [])
+                example_text = ""
+                if examples:
+                    sample = random.sample(examples, min(3, len(examples)))
+                    example_text = "以下是群友近期的聊天风格示例（仅作语气参考，不要照搬内容）：\n"
+                    example_text += "\n".join([f"- {s}" for s in sample]) + "\n"
+                    example_text += "请结合自身的人设，形成有自己特色的发言。"
+                
                 audience = "大家" if chat_type == "group" else "你"
                 prompt = (
                     f"你的人设：{personality_text}\n"
+                    f"{example_text}"
                     f"根据以下话题提示生成一句主动聊天消息，对象是{audience}。\n"
                     f"话题提示：{topic_prompt}\n"
-                    f"要求自然简短不超50字，不要加引号。"
+                    f"要求：自然、简短（不超过50字），不要加引号。"
                 )
                 response = await llm_tools.text_chat(prompt)
                 return response.strip()
         except Exception as e:
-            logger.error(f"系统 LLM 生成失败: {e}")
-        fallback = self.topic_manager.get_preset_topic(chat_type)
-        logger.info(f"降级使用预设话题: {fallback}")
-        return fallback
+            logger.error(f"系统LLM生成失败: {e}")
+        return self.topic_manager.get_preset_topic(chat_type)
 
     async def _send_proactive_message(self, origin, chat_id: str, chat_type: ChatType):
-        logger.info(f"开始为 {chat_type} {chat_id} 生成主动消息")
-        
-        # 权重自适应：读取配置并自动归一化
-        prefix = "group_" if chat_type == "group" else "private_"
-        raw_weights = {
-            "history": self.config.get(f"{prefix}weight_history", 30),
-            "knowledge": self.config.get(f"{prefix}weight_knowledge", 25),
-            "preset": self.config.get(f"{prefix}weight_preset", 20),
-            "custom": self.config.get(f"{prefix}weight_custom", 25)
+        logger.info(f"准备为 {chat_type} {chat_id} 生成主动消息")
+        weights = {
+            "history": self.config.get("weight_history", 30),
+            "knowledge": self.config.get("weight_knowledge", 25),
+            "preset": self.config.get("weight_preset", 20),
+            "custom": self.config.get("weight_custom", 25)
         }
-        total = sum(raw_weights.values())
+        total = sum(weights.values())
         if total == 0:
-            # 全部为0时均匀分配
-            weights = {k: 25 for k in raw_weights}
-        else:
-            weights = {k: int(v / total * 100) for k, v in raw_weights.items()}  # 转成百分比整数，不影响random.choices
+            weights = {k: 25 for k in weights}
+        items = list(weights.keys())
+        probs = [weights[k] / total for k in items]
+        source = random.choices(items, weights=probs, k=1)[0]
+        logger.info(f"选择话题来源: {source}")
 
-        source = self.topic_manager.select_source(weights)
-        logger.info(f"为 {chat_type} {chat_id} 选择话题来源: {source} (权重分布: {weights})")
-        
-        topic_prompt = None
         if source == "preset":
             message = self.topic_manager.get_preset_topic(chat_type)
-            logger.info(f"使用预设话题直接发言: {message}")
             await self._send_raw_message(origin, message, chat_id, chat_type)
             return
-        
-        elif source == "custom":
+
+        topic_prompt = None
+        if source == "custom":
             topic_prompt = self.topic_manager.get_custom_topic()
             if not topic_prompt:
-                logger.warning("自定义主题列表为空，降级到预设话题")
                 message = self.topic_manager.get_preset_topic(chat_type)
                 await self._send_raw_message(origin, message, chat_id, chat_type)
                 return
-            logger.info(f"自定义主题: {topic_prompt}")
-        
         elif source == "knowledge":
             topic_prompt = self.topic_manager.get_knowledge_topic(chat_type)
-            logger.info(f"知识话题: {topic_prompt}")
-        
         elif source == "history":
             topic_prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
             if not topic_prompt:
-                logger.warning("获取历史话题失败，降级到预设话题")
                 message = self.topic_manager.get_preset_topic(chat_type)
                 await self._send_raw_message(origin, message, chat_id, chat_type)
                 return
-            logger.info(f"历史话题: {topic_prompt}")
-        
+
         if topic_prompt:
             llm_client = self._get_llm_client()
             try:
@@ -142,11 +260,10 @@ class ProactiveScheduler:
                     message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
                 await self._send_raw_message(origin, message, chat_id, chat_type)
             except Exception as e:
-                logger.error(f"LLM 生成消息失败: {e}，降级使用预设话题")
+                logger.error(f"LLM生成失败: {e}，降级预设")
                 message = self.topic_manager.get_preset_topic(chat_type)
                 await self._send_raw_message(origin, message, chat_id, chat_type)
         else:
-            logger.error("未获取到任何话题提示，使用默认预设话题")
             message = self.topic_manager.get_preset_topic(chat_type)
             await self._send_raw_message(origin, message, chat_id, chat_type)
 
@@ -154,122 +271,6 @@ class ProactiveScheduler:
         try:
             message_chain = MessageChain().message(Plain(text=message))
             await self.context.send_message(origin, message_chain)
-            if chat_type == "group":
-                self.group_last_chat[chat_id] = datetime.now()
-            else:
-                self.private_last_chat[chat_id] = datetime.now()
-            logger.info(f"✓ 主动消息发送成功 -> {chat_type} {chat_id}: {message[:50]}...")
+            logger.info(f"✓ 主动消息已发送 -> {chat_type} {chat_id}: {message[:50]}...")
         except Exception as e:
-            logger.error(f"✗ 发送主动消息失败 -> {chat_type} {chat_id}: {type(e).__name__}: {str(e)}")
-
-    async def _check_and_trigger_for_type(self, chat_type: ChatType):
-        enabled_key = f"{chat_type}_enabled"
-        if not self.config.get(enabled_key, True):
-            logger.debug(f"{chat_type} 主动聊天总开关未开启，跳过")
-            return
-        
-        now = datetime.now()
-        start_key = f"{chat_type}_start_time"
-        end_key = f"{chat_type}_end_time"
-        start_min = time_str_to_minutes(self.config.get(start_key, "00:00"))
-        end_min = time_str_to_minutes(self.config.get(end_key, "23:59"))
-        now_min = now.hour * 60 + now.minute
-        if not (start_min <= now_min <= end_min):
-            logger.debug(f"{chat_type} 不在允许时间段内 ({start_key}~{end_key})，跳过")
-            return
-        
-        interval_key = f"{chat_type}_check_interval"
-        jitter_key = f"{chat_type}_jitter"
-        prob_key = f"{chat_type}_probability"
-        min_interval_key = f"{chat_type}_min_interval"
-        isolation_key = f"{chat_type}_isolation_time"
-        allowed_key = f"{chat_type}_allowed_ids"
-        
-        base_interval = self.config.get(interval_key, 15)
-        jitter = self.config.get(jitter_key, 5)
-        prob = self.config.get(prob_key, 0.3)
-        min_interval = self.config.get(min_interval_key, 60)
-        isolation = self.config.get(isolation_key, 10)
-        allowed_ids = self.config.get(allowed_key, [])
-        
-        origins_dict = self.group_origins if chat_type == "group" else self.private_origins
-        last_chat_dict = self.group_last_chat if chat_type == "group" else self.private_last_chat
-        last_msg_dict = self.group_last_msg if chat_type == "group" else self.private_last_msg
-        
-        logger.debug(f"{chat_type} 触发检查: 当前活跃会话数={len(origins_dict)}")
-        
-        for chat_id, origin in list(origins_dict.items()):
-            if allowed_ids and chat_id not in allowed_ids:
-                logger.debug(f"{chat_type} {chat_id} 不在白名单，跳过")
-                continue
-            
-            if random.random() > prob:
-                logger.debug(f"{chat_type} {chat_id} 触发概率未命中 (prob={prob})，跳过")
-                continue
-            
-            last_chat = last_chat_dict.get(chat_id)
-            if last_chat:
-                minutes_since_chat = (now - last_chat).total_seconds() / 60
-                if minutes_since_chat < min_interval:
-                    logger.debug(f"{chat_type} {chat_id} 距离上次主动聊天仅 {minutes_since_chat:.1f} 分钟 < {min_interval}，跳过")
-                    continue
-            
-            last_msg = last_msg_dict.get(chat_id)
-            if last_msg:
-                minutes_since_msg = (now - last_msg).total_seconds() / 60
-                if minutes_since_msg < isolation:
-                    logger.debug(f"{chat_type} {chat_id} 最后一条消息距今 {minutes_since_msg:.1f} 分钟 < {isolation}，隔离期内跳过")
-                    continue
-            
-            logger.info(f"{chat_type} {chat_id} 满足所有触发条件，准备发送主动消息")
-            await self._send_proactive_message(origin, chat_id, chat_type)
-    
-    async def _check_and_trigger(self):
-        await self._check_and_trigger_for_type("group")
-        await self._check_and_trigger_for_type("private")
-    
-    def start(self):
-        # 根据开关决定是否添加定时任务
-        if self.config.get("group_enabled", True):
-            group_interval = self.config.get("group_check_interval", 15) * 60
-            self.scheduler.add_job(
-                self._check_and_trigger_for_type, 'interval',
-                args=["group"], seconds=group_interval, id='proactive_group'
-            )
-            logger.info(f"群聊主动聊天已启用，间隔 {group_interval//60} 分钟")
-        else:
-            logger.info("群聊主动聊天已关闭，跳过定时任务")
-        
-        if self.config.get("private_enabled", True):
-            private_interval = self.config.get("private_check_interval", 20) * 60
-            self.scheduler.add_job(
-                self._check_and_trigger_for_type, 'interval',
-                args=["private"], seconds=private_interval, id='proactive_private'
-            )
-            logger.info(f"私聊主动聊天已启用，间隔 {private_interval//60} 分钟")
-        else:
-            logger.info("私聊主动聊天已关闭，跳过定时任务")
-        
-        self.scheduler.start()
-        logger.info("主动调度器启动完成")
-    
-    def stop(self):
-        self.scheduler.shutdown()
-        logger.info("主动调度器已停止")
-    
-    def record_message_time(self, chat_id: str, chat_type: ChatType, is_bot_message: bool = False):
-        if not is_bot_message:
-            if chat_type == "group":
-                self.group_last_msg[chat_id] = datetime.now()
-                logger.debug(f"记录群聊 {chat_id} 最后消息时间")
-            else:
-                self.private_last_msg[chat_id] = datetime.now()
-                logger.debug(f"记录私聊 {chat_id} 最后消息时间")
-    
-    def register_origin(self, chat_id: str, chat_type: ChatType, origin):
-        if chat_type == "group":
-            self.group_origins[chat_id] = origin
-            logger.debug(f"注册群聊 {chat_id} 的 origin")
-        else:
-            self.private_origins[chat_id] = origin
-            logger.debug(f"注册私聊 {chat_id} 的 origin")
+            logger.error(f"✗ 发送失败: {e}")
