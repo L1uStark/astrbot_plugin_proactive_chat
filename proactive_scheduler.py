@@ -16,8 +16,8 @@ ChatType = Literal["group", "private"]
 class ProactiveScheduler:
     def __init__(self, plugin_instance):
         self.plugin = plugin_instance
-        self.context = plugin_instance.context  # v4 的标准 Context 对象
-        self.config = plugin_instance.plugin_config  # 获取插件的配置
+        self.context = plugin_instance.context
+        self.config = plugin_instance.plugin_config
 
         self.scheduler = AsyncIOScheduler()
         self.group_origins: Dict[str, Any] = {}
@@ -31,7 +31,6 @@ class ProactiveScheduler:
         self._llm_client = None
 
     def _get_personality_text(self) -> str:
-        # ... (此方法保持不变) ...
         custom = self.config.get("personality_custom", "").strip()
         if custom:
             logger.debug("使用自定义人格")
@@ -47,7 +46,6 @@ class ProactiveScheduler:
         return "一个友好的聊天机器人"
 
     def _get_llm_client(self):
-        # ... (此方法保持不变) ...
         if self._llm_client is None:
             llm_provider = self.config.get("llm_provider", "")
             llm_api_key = self.config.get("llm_api_key", "")
@@ -66,7 +64,6 @@ class ProactiveScheduler:
         return self._llm_client
 
     async def _generate_message_with_system_llm(self, topic_prompt: str, chat_type: ChatType) -> str:
-        # ... (此方法内部逻辑保持不变) ...
         try:
             llm_tools = self.context.get_llm_tools()
             if llm_tools:
@@ -78,24 +75,25 @@ class ProactiveScheduler:
                     f"话题提示：{topic_prompt}\n"
                     f"要求自然简短不超50字，不要加引号。"
                 )
-                # 注意：新版 LLM 调用方式可能有所不同，这里假设 llm_tools 有 text_chat 方法
                 response = await llm_tools.text_chat(prompt)
                 return response.strip()
         except Exception as e:
             logger.error(f"系统 LLM 生成失败: {e}")
-        # 降级到预设话题
         fallback = self.topic_manager.get_preset_topic(chat_type)
         logger.info(f"降级使用预设话题: {fallback}")
         return fallback
 
     async def _send_proactive_message(self, origin, chat_id: str, chat_type: ChatType):
-        # ... (此方法内部逻辑基本保持不变，但需注意 context 的使用) ...
         logger.info(f"开始为 {chat_type} {chat_id} 生成主动消息")
         
-        if chat_type == "group":
-            weights = self.config.get("group_topic_weights", {"history":30, "knowledge":25, "preset":20, "custom":25})
-        else:
-            weights = self.config.get("private_topic_weights", {"history":40, "knowledge":20, "preset":15, "custom":25})
+        # ✅ 修改点：从4个独立权重字段拼装字典
+        prefix = "group_" if chat_type == "group" else "private_"
+        weights = {
+            "history": self.config.get(f"{prefix}weight_history", 30),
+            "knowledge": self.config.get(f"{prefix}weight_knowledge", 25),
+            "preset": self.config.get(f"{prefix}weight_preset", 20),
+            "custom": self.config.get(f"{prefix}weight_custom", 25)
+        }
         
         source = self.topic_manager.select_source(weights)
         logger.info(f"为 {chat_type} {chat_id} 选择话题来源: {source} (权重分布: {weights})")
@@ -147,11 +145,8 @@ class ProactiveScheduler:
             await self._send_raw_message(origin, message, chat_id, chat_type)
 
     async def _send_raw_message(self, origin, message: str, chat_id: str, chat_type: ChatType):
-        """实际发送消息并更新状态（使用 v4 API）"""
         try:
-            # 1. 构建消息链
             message_chain = MessageChain().message(Plain(text=message))
-            # 2. 发送消息 - 注意 v4 的 send_message 方法签名
             await self.context.send_message(origin, message_chain)
             if chat_type == "group":
                 self.group_last_chat[chat_id] = datetime.now()
@@ -162,7 +157,6 @@ class ProactiveScheduler:
             logger.error(f"✗ 发送主动消息失败 -> {chat_type} {chat_id}: {type(e).__name__}: {str(e)}")
 
     async def _check_and_trigger_for_type(self, chat_type: ChatType):
-        # ... (此方法内部逻辑保持不变) ...
         enabled_key = f"{chat_type}_enabled"
         if not self.config.get(enabled_key, True):
             logger.debug(f"{chat_type} 主动聊天总开关未开启，跳过")
@@ -225,12 +219,10 @@ class ProactiveScheduler:
             await self._send_proactive_message(origin, chat_id, chat_type)
     
     async def _check_and_trigger(self):
-        # ... (此方法保持不变) ...
         await self._check_and_trigger_for_type("group")
         await self._check_and_trigger_for_type("private")
     
     def start(self):
-        # ... (此方法保持不变) ...
         group_interval = self.config.get("group_check_interval", 15) * 60
         private_interval = self.config.get("private_check_interval", 20) * 60
         
@@ -245,12 +237,10 @@ class ProactiveScheduler:
         logger.info(f"主动调度器启动: 群聊间隔 {group_interval//60} 分钟, 私聊间隔 {private_interval//60} 分钟")
     
     def stop(self):
-        # ... (此方法保持不变) ...
         self.scheduler.shutdown()
         logger.info("主动调度器已停止")
     
     def record_message_time(self, chat_id: str, chat_type: ChatType, is_bot_message: bool = False):
-        # ... (此方法保持不变) ...
         if not is_bot_message:
             if chat_type == "group":
                 self.group_last_msg[chat_id] = datetime.now()
@@ -260,7 +250,6 @@ class ProactiveScheduler:
                 logger.debug(f"记录私聊 {chat_id} 最后消息时间")
     
     def register_origin(self, chat_id: str, chat_type: ChatType, origin):
-        # ... (此方法保持不变) ...
         if chat_type == "group":
             self.group_origins[chat_id] = origin
             logger.debug(f"注册群聊 {chat_id} 的 origin")
