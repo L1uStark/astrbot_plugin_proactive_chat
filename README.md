@@ -16,13 +16,52 @@
   - 如果 LLM 生成失败或未配置，自动降级到预设话题，确保总能发言。
 - **详细日志**：记录每次触发检查、话题选择、LLM 调用成功/失败及原因、降级情况，便于调试。
 
-## 📦 安装
+## 📦 安装与依赖
 
-1. 将本插件文件夹放入 AstrBot 的 `addons` 目录。
-2. 重启 AstrBot，在 WebUI 中启用插件。
-3. 根据需要修改配置（重点：自定义人格、自定义主题列表、LLM 密钥等）。
-4. 确保已安装依赖：
-   ```bash
-   pip install apscheduler openai
-   # 如果使用 Anthropic 还需：
-   pip install anthropic
+### 1. 安装位置
+请将本插件文件夹放入 AstrBot 项目根目录下的 `data/plugins/` 文件夹内。
+
+### 2. 依赖安装
+插件依赖会在 AstrBot 加载时自动尝试安装。如需手动安装，可运行：
+```bash
+pip install apscheduler openai anthropic
+```
+
+#### ⚙️ 配置说明
+
+在插件配置页面（WebUI）可以看到所有可调参数，重点如下：
+
+| 参数 | 说明 |
+|------|------|
+| `personality_custom` | **自定义人格**，例如“你是一只傲娇的猫娘，说话带喵尾”。留空则自动降级到系统人设或默认人格。 |
+| `custom_topics` | **自定义话题主题列表**，每个元素是一个字符串（如“聊一聊最近的电影”）。LLM 会基于这些主题生成消息。 |
+| `group_topic_weights` / `private_topic_weights` | 话题来源权重，支持 `history`、`knowledge`、`preset`、`custom`。 |
+| `enable_context_history` | 是否读取历史消息（如果关闭，`history` 权重将无效）。 |
+| `llm_provider`、`llm_api_key` 等 | 独立 LLM 配置（provider 可选 `openai`/`deepseek`/`anthropic`/`custom`），留空则使用系统默认 LLM。 |
+| 群聊/私聊独立配置 | 包括开关、检查间隔、触发概率、时间段、白名单等，按需调整即可。 |
+
+## ⚠️ 注意事项
+
+1. **平台支持**：并非所有平台都开放了主动消息推送的 API。目前 AstrBot 官方明确支持主动推送的平台包括：**Telegram、OneBot v11 (QQ)、Slack、飞书(Lark)、Discord、Misskey、Satori**。在其他平台（如微信）可能无法生效。
+2. **历史消息依赖**：`history` 话题来源需要 AstrBot 提供 `get_chat_history` 接口。如果你的 AstrBot 版本不支持，请将 `history` 权重设为 0，或关闭 `enable_context_history`。
+3. **版本兼容性**：本插件部分功能依赖 AstrBot v4.x 的主动调度能力，建议使用最新版本。
+4. **白名单格式**：`group_allowed_ids` 和 `private_allowed_ids` 是字符串列表。如果使用 OneBot，群号/QQ号需要填写为字符串（例如 `["123456789"]`）。
+5. **时间格式**：`start_time` / `end_time` 必须为 `HH:MM` 格式（24小时制）。
+6. **日志级别**：插件会输出大量 DEBUG 级别日志，建议在 AstrBot 配置中将日志级别设为 INFO 或 DEBUG 以查看详细运行信息。
+
+## 🧪 测试建议
+
+- 设置较小的检查间隔（如 1 分钟）和较高的触发概率（0.8），快速测试是否触发。
+- 在 WebUI 中开启 DEBUG 日志，观察 `主动调度器启动`、`选择话题来源`、`LLM 生成成功/失败` 等日志。
+- 私聊测试：确保平台支持机器人主动向好友发送消息（例如 Telegram 可以）。
+- 自定义主题测试：在配置中填写几个主题，观察机器人是否按主题发言。
+- 降级测试：故意填写错误的 LLM API Key，观察插件是否自动使用预设话题。
+
+## ✅ 检查清单
+
+- 文件命名正确（`_conf_schema.json` 下划线开头）。
+- 所有路径中的资源文件存在（两个 JSON 文件）。
+- 依赖已安装（`apscheduler`, `openai` 等）。
+- 插件在 WebUI 中启用后，检查日志是否有错误。
+
+如果遇到问题，请查看 AstrBot 的日志输出，并根据报错信息调整配置。
