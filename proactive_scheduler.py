@@ -17,7 +17,7 @@ class ProactiveScheduler:
     def __init__(self, plugin_instance):
         self.plugin = plugin_instance
         self.context = plugin_instance.context
-        self.config = plugin_instance.plugin_config
+        self.config = plugin_instance.config          # ← 修复点
 
         self.scheduler = AsyncIOScheduler()
         self.group_origins: Dict[str, Any] = {}
@@ -86,7 +86,6 @@ class ProactiveScheduler:
     async def _send_proactive_message(self, origin, chat_id: str, chat_type: ChatType):
         logger.info(f"开始为 {chat_type} {chat_id} 生成主动消息")
         
-        # ✅ 修改点：从4个独立权重字段拼装字典
         prefix = "group_" if chat_type == "group" else "private_"
         weights = {
             "history": self.config.get(f"{prefix}weight_history", 30),
