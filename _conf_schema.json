@@ -76,6 +76,9 @@
     "group_allowed_ids": {
         "description": "群聊白名单（群ID列表）",
         "type": "list",
+        "items": {
+            "type": "string"
+        },
         "default": [],
         "hint": "留空则对所有群生效"
     },
@@ -144,6 +147,9 @@
     "private_allowed_ids": {
         "description": "私聊白名单（用户ID列表）",
         "type": "list",
+        "items": {
+            "type": "string"
+        },
         "default": [],
         "hint": "留空则对所有好友生效"
     },
@@ -160,6 +166,9 @@
     "custom_topics": {
         "description": "自定义话题关键词列表（每个元素是一个主题词，如“美食”、“原神”）",
         "type": "list",
+        "items": {
+            "type": "string"
+        },
         "default": [
             "美食",
             "天气",
