@@ -1,11 +1,9 @@
 name: "proactive_chat"
-version: "1.0.0"
+version: "1.2.0"
 author: "L1uStark"
-description: "让机器人主动发起聊天，支持群聊/私聊分离、独立话题池、上下文延续、自定义人格"
-display_name: "主动聊天插件"
-short_desc: "机器人主动发言，支持群聊和私聊独立配置"
+description: "让机器人主动发起聊天，支持沉默触发、自我学习、LLM自定义、群私分离"
+display_name: "怕寂寞的AstrBot"
+short_desc: "当机器人也能主动发言，他便成了人"
 astrbot_version: ">=4.0.0" # 声明此插件要求的最低 AstrBot 版本
 support_platforms:
   - aiocqhttp
-  - telegram
-  - lark
