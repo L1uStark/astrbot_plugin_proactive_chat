@@ -26,11 +26,9 @@ class TopicManager:
         self.custom_topics = self.config.get("custom_topics", [])
         if not self.custom_topics:
             self.custom_topics = [
-                "聊一聊最近的热点新闻",
-                "分享一个你最近遇到的趣事",
-                "讨论一下你最喜欢的电影或音乐",
-                "说说你对未来的规划",
-                "谈谈你最喜欢的食物或旅行地"
+                "美食",
+                "天气",
+                "原神"
             ]
             logger.info("未配置自定义主题，使用默认主题列表")
     
@@ -56,7 +54,7 @@ class TopicManager:
         return random.choice(topics)
     
     def get_custom_topic(self) -> str:
-        """获取自定义主题（方向描述）"""
+        """获取随机一个自定义话题关键词（如“美食”、“原神”），供LLM生成具体内容"""
         if not self.custom_topics:
             logger.warning("自定义主题列表为空，降级到预设话题")
             return None
