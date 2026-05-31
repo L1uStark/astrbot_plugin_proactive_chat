@@ -20,6 +20,7 @@ class SessionState:
         self.phase_start = None
         self.origin = None
         self.last_dice_time = None
+        self.consecutive_speaks = 0  # 连续主动发言次数
 
 class ProactiveScheduler:
     def __init__(self, plugin_instance):
@@ -82,7 +83,8 @@ class ProactiveScheduler:
         state.phase = "waiting"
         state.phase_start = None
         state.last_dice_time = None
-        logger.info(f"[调试] {chat_type} {chat_id} 收到消息，重置为静默等待")
+        state.consecutive_speaks = 0  # 新消息到来，重置计数器
+        logger.info(f"[调试] {chat_type} {chat_id} 收到消息，重置为静默等待（计数器已清零）")
 
     async def _loop(self):
         while self._running:
@@ -124,6 +126,12 @@ class ProactiveScheduler:
             await self._process_session(chat_id, chat_type, state, now)
 
     async def _process_session(self, chat_id: str, chat_type: ChatType, state: SessionState, now: datetime):
+        max_consecutive = self.config.get("max_consecutive_speaks", 1)
+        # 如果已达到连续发言上限，暂停计时，直到新消息重置
+        if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
+            logger.info(f"[调试] {chat_type} {chat_id} 连续发言已达上限（{max_consecutive}次），暂停计时")
+            return
+
         wait = self.learner.get_dynamic_param("silence_wait", self.config.get(f"{chat_type}_silence_wait", 10))
         dur1 = self.learner.get_dynamic_param("phase1_duration", self.config.get(f"{chat_type}_phase1_duration", 40))
         prob1 = self.learner.get_dynamic_param("phase1_prob", self.config.get(f"{chat_type}_phase1_prob", 0.15))
@@ -136,7 +144,7 @@ class ProactiveScheduler:
             return
 
         silent_minutes = (now - state.last_message_time).total_seconds() / 60
-        logger.info(f"[调试] {chat_type} {chat_id} 已沉默 {silent_minutes:.1f} 分钟，当前阶段: {state.phase}")
+        logger.info(f"[调试] {chat_type} {chat_id} 已沉默 {silent_minutes:.1f} 分钟，当前阶段: {state.phase}, 连续发言: {state.consecutive_speaks}/{max_consecutive}")
 
         if state.phase == "waiting":
             if silent_minutes >= wait:
@@ -189,7 +197,20 @@ class ProactiveScheduler:
 
     async def _trigger_speak(self, chat_id: str, chat_type: ChatType, state: SessionState):
         await self._send_proactive_message(state.origin, chat_id, chat_type)
-        self.on_message_received(chat_id, chat_type)
+        # 增加连续发言计数
+        max_consecutive = self.config.get("max_consecutive_speaks", 1)
+        state.consecutive_speaks += 1
+        logger.info(f"[调试] {chat_type} {chat_id} 连续发言次数: {state.consecutive_speaks}/{max_consecutive}")
+        if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
+            # 达到上限，重置会话状态，停止计时
+            state.last_message_time = None  # 这样就不会再进入 phase
+            state.phase = "waiting"
+            state.phase_start = None
+            state.last_dice_time = None
+            logger.info(f"[调试] {chat_type} {chat_id} 已达连续发言上限，暂停计时，等待新消息")
+        else:
+            # 未达上限，正常重置计时（视为机器人发言，所以也要更新最后消息时间）
+            self.on_message_received(chat_id, chat_type)
 
     def _get_personality_text(self) -> str:
         custom = self.config.get("personality_custom", "").strip()
@@ -239,10 +260,14 @@ class ProactiveScheduler:
                     f"要求：自然、简短（不超过50字），不要加引号。"
                 )
                 response = await llm_tools.text_chat(prompt)
-                return response.strip()
+                if response:
+                    return response.strip()
+                else:
+                    logger.warning("系统 LLM 返回空响应")
+                    return None
         except Exception as e:
             logger.error(f"系统LLM生成失败: {e}")
-        return self.topic_manager.get_preset_topic(chat_type)
+        return None
 
     async def _send_proactive_message(self, origin, chat_id: str, chat_type: ChatType):
         logger.info(f"准备为 {chat_type} {chat_id} 生成主动消息")
@@ -259,47 +284,70 @@ class ProactiveScheduler:
         probs = [weights[k] / total for k in items]
         source = random.choices(items, weights=probs, k=1)[0]
 
+        logger.info(f"话题来源: {source}")
+
+        message = None
+
         if source == "preset":
             message = self.topic_manager.get_preset_topic(chat_type)
-            await self._send_raw_message(origin, message, chat_id, chat_type)
-            return
-
-        topic_prompt = None
-        if source == "custom":
+        elif source == "custom":
             topic_prompt = self.topic_manager.get_custom_topic()
             if not topic_prompt:
+                logger.warning("自定义主题列表为空，降级到预设话题")
                 message = self.topic_manager.get_preset_topic(chat_type)
-                await self._send_raw_message(origin, message, chat_id, chat_type)
-                return
+            else:
+                llm_client = self._get_llm_client()
+                try:
+                    if llm_client:
+                        message = await llm_client.generate_response(topic_prompt, chat_type)
+                    else:
+                        message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
+                    if not message:
+                        message = self.topic_manager.get_preset_topic(chat_type)
+                except Exception as e:
+                    logger.error(f"LLM生成失败: {e}，降级预设")
+                    message = self.topic_manager.get_preset_topic(chat_type)
         elif source == "knowledge":
             topic_prompt = self.topic_manager.get_knowledge_topic(chat_type)
-        elif source == "history":
-            topic_prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
-            if not topic_prompt:
-                message = self.topic_manager.get_preset_topic(chat_type)
-                await self._send_raw_message(origin, message, chat_id, chat_type)
-                return
-
-        if topic_prompt:
             llm_client = self._get_llm_client()
             try:
                 if llm_client:
                     message = await llm_client.generate_response(topic_prompt, chat_type)
                 else:
                     message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
-                await self._send_raw_message(origin, message, chat_id, chat_type)
+                if not message:
+                    message = self.topic_manager.get_preset_topic(chat_type)
             except Exception as e:
                 logger.error(f"LLM生成失败: {e}，降级预设")
                 message = self.topic_manager.get_preset_topic(chat_type)
-                await self._send_raw_message(origin, message, chat_id, chat_type)
+        elif source == "history":
+            topic_prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
+            if not topic_prompt:
+                logger.warning("历史话题获取失败，降级到预设话题")
+                message = self.topic_manager.get_preset_topic(chat_type)
+            else:
+                llm_client = self._get_llm_client()
+                try:
+                    if llm_client:
+                        message = await llm_client.generate_response(topic_prompt, chat_type)
+                    else:
+                        message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
+                    if not message:
+                        message = self.topic_manager.get_preset_topic(chat_type)
+                except Exception as e:
+                    logger.error(f"LLM生成失败: {e}，降级预设")
+                    message = self.topic_manager.get_preset_topic(chat_type)
+
+        # 最终兜底
+        if not isinstance(message, str) or not message.strip():
+            message = "今天想聊点什么呢？"
         else:
-            message = self.topic_manager.get_preset_topic(chat_type)
-            await self._send_raw_message(origin, message, chat_id, chat_type)
+            message = message.strip()
+
+        await self._send_raw_message(origin, message, chat_id, chat_type)
 
     async def _send_raw_message(self, origin, message: str, chat_id: str, chat_type: ChatType):
-        # 确保 message 是字符串且不为空
         if not isinstance(message, str) or not message.strip():
-            logger.warning(f"消息内容无效，使用默认问候语")
             message = "今天想聊点什么呢？"
         try:
             message_chain = MessageChain().message(Plain(text=message))
