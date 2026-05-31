@@ -19,10 +19,34 @@ class ProactiveChatPlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
-        # 获取纯数字 ID
-        is_group = event.get_group_id() is not None
-        chat_type = "group" if is_group else "private"
-        chat_id = str(event.get_group_id()) if is_group else str(event.get_sender_id())
+        # 通过 message_obj 的 message_type 来判断群聊还是私聊
+        msg_type = getattr(event.message_obj, 'message_type', None)
+        
+        if msg_type == 'group':
+            chat_type = "group"
+            chat_id = str(event.get_group_id())
+            # 检查开关和白名单
+            if not self.config.get("group_enabled", True):
+                logger.info(f"[调试] 群聊主动聊天已关闭，跳过群 {chat_id}")
+                return
+            allowed = self.config.get("group_allowed_ids", [])
+            if allowed and chat_id not in [str(a) for a in allowed]:
+                logger.info(f"[调试] 群 {chat_id} 不在白名单，跳过")
+                return
+        elif msg_type == 'private':
+            chat_type = "private"
+            chat_id = str(event.get_sender_id())
+            # 检查开关和白名单
+            if not self.config.get("private_enabled", True):
+                logger.info(f"[调试] 私聊主动聊天已关闭，跳过 {chat_id}")
+                return
+            allowed = self.config.get("private_allowed_ids", [])
+            if allowed and chat_id not in [str(a) for a in allowed]:
+                logger.info(f"[调试] 私聊 {chat_id} 不在白名单，跳过")
+                return
+        else:
+            # 不是群聊也不是私聊（比如输入状态、通知等），直接忽略
+            return
 
         # 注册会话 origin
         self.proactive_scheduler.register_origin(chat_id, chat_type, event.unified_msg_origin)
