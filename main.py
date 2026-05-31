@@ -4,7 +4,7 @@ from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
 from .proactive_scheduler import ProactiveScheduler
 
-@register("proactive_chat", "L1uStark", "当波特也会主动发言，那它便成了人", "1.2.0")
+@register("proactive_chat", "L1uStark", "主动聊天插件，支持沉默触发、自我学习", "1.2.0")
 class ProactiveChatPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -19,16 +19,15 @@ class ProactiveChatPlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
-        session_id = event.get_session_id()
-        if not session_id:
-            return
-
+        # 获取纯数字 ID
         is_group = event.get_group_id() is not None
         chat_type = "group" if is_group else "private"
+        chat_id = str(event.get_group_id()) if is_group else str(event.get_sender_id())
 
-        self.proactive_scheduler.register_origin(session_id, chat_type, event.unified_msg_origin)
+        # 注册会话 origin
+        self.proactive_scheduler.register_origin(chat_id, chat_type, event.unified_msg_origin)
         # 任何消息都重置沉默（包括机器人自己）
-        self.proactive_scheduler.on_message_received(session_id, chat_type)
+        self.proactive_scheduler.on_message_received(chat_id, chat_type)
 
     async def terminate(self):
         logger.info("主动聊天插件正在卸载...")
