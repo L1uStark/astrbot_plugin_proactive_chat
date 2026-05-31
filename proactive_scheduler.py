@@ -72,7 +72,7 @@ class ProactiveScheduler:
         if chat_id not in sessions:
             sessions[chat_id] = SessionState()
         sessions[chat_id].origin = origin
-        logger.info(f"[调试] 注册 {chat_type} {chat_id} 的 origin")
+        logger.info(f"[日志] 注册 {chat_type} {chat_id} 的 origin")
 
     def on_message_received(self, chat_id: str, chat_type: ChatType):
         sessions = self.group_sessions if chat_type == "group" else self.private_sessions
@@ -84,16 +84,16 @@ class ProactiveScheduler:
         state.phase_start = None
         state.last_dice_time = None
         state.consecutive_speaks = 0
-        logger.info(f"[调试] {chat_type} {chat_id} 收到消息，重置为静默等待（计数器已清零）")
+        logger.info(f"[日志] {chat_type} {chat_id} 收到消息，重置为静默等待（计数器已清零）")
 
     async def _loop(self):
-        logger.info("[调试] 调度循环已启动")
+        logger.info("[日志] 调度循环已启动")
         while self._running:
             try:
                 await asyncio.sleep(60)
                 if not self.config.get("enabled", True):
                     continue
-                logger.info("[调试] 开始检查会话...")
+                logger.info("[日志] 开始检查会话...")
                 await self._check_all("group")
                 await self._check_all("private")
             except Exception as e:
@@ -101,7 +101,7 @@ class ProactiveScheduler:
 
     async def _check_all(self, chat_type: ChatType):
         if not self.config.get(f"{chat_type}_enabled", True):
-            logger.info(f"[调试] {chat_type} 总开关未开启")
+            logger.info(f"[日志] {chat_type} 总开关未开启")
             return
         now = datetime.now()
         start_key = f"{chat_type}_start_time"
@@ -110,26 +110,26 @@ class ProactiveScheduler:
         end_min = time_str_to_minutes(self.config.get(end_key, "23:59"))
         now_min = now.hour * 60 + now.minute
         if not (start_min <= now_min <= end_min):
-            logger.info(f"[调试] {chat_type} 不在允许时间段内")
+            logger.info(f"[日志] {chat_type} 不在允许时间段内")
             return
 
         allowed_ids = self.config.get(f"{chat_type}_allowed_ids", [])
         sessions = self.group_sessions if chat_type == "group" else self.private_sessions
 
-        logger.info(f"[调试] {chat_type} 触发检查: 当前活跃会话数={len(sessions)}")
+        logger.info(f"[日志] {chat_type} 触发检查: 当前活跃会话数={len(sessions)}")
         for chat_id, state in list(sessions.items()):
             if allowed_ids and chat_id not in allowed_ids:
-                logger.info(f"[调试] {chat_type} {chat_id} 不在白名单，跳过")
+                logger.info(f"[日志] {chat_type} {chat_id} 不在白名单，跳过")
                 continue
             if not state.origin:
-                logger.info(f"[调试] {chat_type} {chat_id} 缺少 origin，跳过")
+                logger.info(f"[日志] {chat_type} {chat_id} 缺少 origin，跳过")
                 continue
             await self._process_session(chat_id, chat_type, state, now)
 
     async def _process_session(self, chat_id: str, chat_type: ChatType, state: SessionState, now: datetime):
         max_consecutive = self.config.get(f"{chat_type}_max_consecutive_speaks", 1)
         if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
-            logger.info(f"[调试] {chat_type} {chat_id} 连续发言已达上限，暂停计时")
+            logger.info(f"[日志] {chat_type} {chat_id} 连续发言已达上限，暂停计时")
             return
 
         wait = self.learner.get_dynamic_param("silence_wait", self.config.get(f"{chat_type}_silence_wait", 10))
@@ -144,14 +144,14 @@ class ProactiveScheduler:
             return
 
         silent_minutes = (now - state.last_message_time).total_seconds() / 60
-        logger.info(f"[调试] {chat_type} {chat_id} 已沉默 {silent_minutes:.1f} 分钟，当前阶段: {state.phase}, 连续发言: {state.consecutive_speaks}/{max_consecutive}")
+        logger.info(f"[日志] {chat_type} {chat_id} 已沉默 {silent_minutes:.1f} 分钟，当前阶段: {state.phase}, 连续发言: {state.consecutive_speaks}/{max_consecutive}")
 
         if state.phase == "waiting":
             if silent_minutes >= wait:
                 state.phase = "phase1"
                 state.phase_start = now
                 state.last_dice_time = None
-                logger.info(f"[调试] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
+                logger.info(f"[日志] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
             return
 
         should_dice = False
@@ -173,25 +173,25 @@ class ProactiveScheduler:
                 state.phase = "phase2"
                 state.phase_start = now
                 state.last_dice_time = None
-                logger.info(f"[调试] {chat_type} {chat_id} 进入第二阶段")
+                logger.info(f"[日志] {chat_type} {chat_id} 进入第二阶段")
                 return
             dice = random.random()
-            logger.info(f"[调试] {chat_type} {chat_id} 第一阶段掷骰: {dice:.3f} (阈值: {prob1})")
+            logger.info(f"[日志] {chat_type} {chat_id} 第一阶段掷骰: {dice:.3f} (阈值: {prob1})")
             if dice < prob1:
-                logger.info(f"[调试] {chat_type} {chat_id} 第一阶段掷骰成功，准备发言")
+                logger.info(f"[日志] {chat_type} {chat_id} 第一阶段掷骰成功，准备发言")
                 await self._trigger_speak(chat_id, chat_type, state)
                 return
 
         elif state.phase == "phase2":
             elapsed2 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
             if elapsed2 >= dur2:
-                logger.info(f"[调试] {chat_type} {chat_id} 第二阶段超时，强制发言")
+                logger.info(f"[日志] {chat_type} {chat_id} 第二阶段超时，强制发言")
                 await self._trigger_speak(chat_id, chat_type, state)
                 return
             dice = random.random()
-            logger.info(f"[调试] {chat_type} {chat_id} 第二阶段掷骰: {dice:.3f} (阈值: {prob2})")
+            logger.info(f"[日志] {chat_type} {chat_id} 第二阶段掷骰: {dice:.3f} (阈值: {prob2})")
             if dice < prob2:
-                logger.info(f"[调试] {chat_type} {chat_id} 第二阶段掷骰成功，准备发言")
+                logger.info(f"[日志] {chat_type} {chat_id} 第二阶段掷骰成功，准备发言")
                 await self._trigger_speak(chat_id, chat_type, state)
                 return
 
@@ -199,13 +199,13 @@ class ProactiveScheduler:
         await self._send_proactive_message(state.origin, chat_id, chat_type)
         max_consecutive = self.config.get(f"{chat_type}_max_consecutive_speaks", 1)
         state.consecutive_speaks += 1
-        logger.info(f"[调试] {chat_type} {chat_id} 连续发言次数: {state.consecutive_speaks}/{max_consecutive}")
+        logger.info(f"[日志] {chat_type} {chat_id} 连续发言次数: {state.consecutive_speaks}/{max_consecutive}")
         if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
             state.last_message_time = None
             state.phase = "waiting"
             state.phase_start = None
             state.last_dice_time = None
-            logger.info(f"[调试] {chat_type} {chat_id} 已达连续发言上限，暂停计时，等待新消息")
+            logger.info(f"[日志] {chat_type} {chat_id} 已达连续发言上限，暂停计时，等待新消息")
         else:
             self.on_message_received(chat_id, chat_type)
 
@@ -245,7 +245,7 @@ class ProactiveScheduler:
                     f"你的人设：{personality_text}\n"
                     f"根据以下话题提示生成一句主动聊天消息，对象是{audience}。\n"
                     f"话题提示：{topic_prompt}\n"
-                    f"要求：自然、简短（不超过30字），不要加引号。"
+                    f"要求：自然、简短（不超过50字），不要加引号。"
                 )
                 response = await llm_tools.text_chat(prompt)
                 if response:
@@ -301,7 +301,6 @@ class ProactiveScheduler:
                     logger.error(f"LLM生成失败: {e}，降级预设")
                     message = self.topic_manager.get_preset_topic(chat_type)
 
-        # 最终强制转换
         if not isinstance(message, str) or not message.strip():
             message = "今天想聊点什么呢？"
         else:
@@ -317,9 +316,8 @@ class ProactiveScheduler:
         if not message.strip():
             message = "今天想聊点什么呢？"
 
-        logger.info(f"[调试] 最终发送消息: type={type(message).__name__}, len={len(message)}")
+        logger.info(f"[日志] 最终发送消息: type={type(message).__name__}, len={len(message)}")
         try:
-            # 正确的构造方式：使用 MessageChain 包装 Plain 列表
             chain = MessageChain([Plain(text=message)])
             await self.context.send_message(origin, chain)
             logger.info(f"✓ 主动消息已发送 -> {chat_type} {chat_id}: {message[:50]}...")
