@@ -43,7 +43,6 @@ class ProactiveScheduler:
         self._running = True
         self._task = asyncio.create_task(self._loop())
         self._learn_task = asyncio.create_task(self._daily_learn_scheduler())
-        # 不再进行任何初始化，完全依赖实际消息驱动
         logger.info("沉默触发调度器已启动，每日学习已安排（等待消息触发）")
 
     def stop(self):
@@ -147,7 +146,6 @@ class ProactiveScheduler:
                 logger.info(f"[调试] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
             return
 
-        # 检查是否应该掷骰子
         should_dice = False
         if state.last_dice_time is None:
             should_dice = True
@@ -299,6 +297,10 @@ class ProactiveScheduler:
             await self._send_raw_message(origin, message, chat_id, chat_type)
 
     async def _send_raw_message(self, origin, message: str, chat_id: str, chat_type: ChatType):
+        # 确保 message 是字符串且不为空
+        if not isinstance(message, str) or not message.strip():
+            logger.warning(f"消息内容无效，使用默认问候语")
+            message = "今天想聊点什么呢？"
         try:
             message_chain = MessageChain().message(Plain(text=message))
             await self.context.send_message(origin, message_chain)
