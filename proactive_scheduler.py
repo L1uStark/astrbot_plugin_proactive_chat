@@ -70,6 +70,7 @@ class ProactiveScheduler:
         if chat_id not in sessions:
             sessions[chat_id] = SessionState()
         sessions[chat_id].origin = origin
+        logger.info(f"[调试] 注册 {chat_type} {chat_id} 的 origin")
 
     def on_message_received(self, chat_id: str, chat_type: ChatType):
         sessions = self.group_sessions if chat_type == "group" else self.private_sessions
@@ -79,6 +80,7 @@ class ProactiveScheduler:
         state.last_message_time = datetime.now()
         state.phase = "waiting"
         state.phase_start = None
+        logger.info(f"[调试] {chat_type} {chat_id} 收到消息，重置为静默等待")
 
     async def _loop(self):
         while self._running:
@@ -86,6 +88,7 @@ class ProactiveScheduler:
             if not self.config.get("enabled", True):
                 continue
             try:
+                logger.info(f"[调试] 开始检查会话...")
                 await self._check_all("group")
                 await self._check_all("private")
             except Exception as e:
@@ -93,6 +96,7 @@ class ProactiveScheduler:
 
     async def _check_all(self, chat_type: ChatType):
         if not self.config.get(f"{chat_type}_enabled", True):
+            logger.info(f"[调试] {chat_type} 总开关未开启")
             return
         now = datetime.now()
         start_key = f"{chat_type}_start_time"
@@ -101,15 +105,19 @@ class ProactiveScheduler:
         end_min = time_str_to_minutes(self.config.get(end_key, "23:59"))
         now_min = now.hour * 60 + now.minute
         if not (start_min <= now_min <= end_min):
+            logger.info(f"[调试] {chat_type} 不在允许时间段内")
             return
 
         allowed_ids = self.config.get(f"{chat_type}_allowed_ids", [])
         sessions = self.group_sessions if chat_type == "group" else self.private_sessions
 
+        logger.info(f"[调试] {chat_type} 触发检查: 当前活跃会话数={len(sessions)}")
         for chat_id, state in list(sessions.items()):
             if allowed_ids and chat_id not in allowed_ids:
+                logger.info(f"[调试] {chat_type} {chat_id} 不在白名单，跳过")
                 continue
             if not state.origin:
+                logger.info(f"[调试] {chat_type} {chat_id} 缺少 origin，跳过")
                 continue
             await self._process_session(chat_id, chat_type, state, now)
 
@@ -125,12 +133,13 @@ class ProactiveScheduler:
             return
 
         silent_minutes = (now - state.last_message_time).total_seconds() / 60
+        logger.info(f"[调试] {chat_type} {chat_id} 已沉默 {silent_minutes:.1f} 分钟，当前阶段: {state.phase}")
 
         if state.phase == "waiting":
             if silent_minutes >= wait:
                 state.phase = "phase1"
                 state.phase_start = now
-                logger.info(f"{chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
+                logger.info(f"[调试] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
             return
 
         elif state.phase == "phase1":
@@ -138,21 +147,23 @@ class ProactiveScheduler:
             if elapsed1 >= dur1:
                 state.phase = "phase2"
                 state.phase_start = now
-                logger.info(f"{chat_type} {chat_id} 进入第二阶段")
+                logger.info(f"[调试] {chat_type} {chat_id} 进入第二阶段")
                 return
             if int(silent_minutes) % 8 == 0 and (now - state.last_message_time).seconds % 480 < 60:
                 if random.random() < prob1:
+                    logger.info(f"[调试] {chat_type} {chat_id} 第一阶段掷骰成功，准备发言")
                     await self._trigger_speak(chat_id, chat_type, state)
                     return
 
         elif state.phase == "phase2":
             elapsed2 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
             if elapsed2 >= dur2:
-                logger.info(f"{chat_type} {chat_id} 第二阶段超时，强制发言")
+                logger.info(f"[调试] {chat_type} {chat_id} 第二阶段超时，强制发言")
                 await self._trigger_speak(chat_id, chat_type, state)
                 return
             if int(silent_minutes) % 8 == 0 and (now - state.last_message_time).seconds % 480 < 60:
                 if random.random() < prob2:
+                    logger.info(f"[调试] {chat_type} {chat_id} 第二阶段掷骰成功，准备发言")
                     await self._trigger_speak(chat_id, chat_type, state)
                     return
 
@@ -161,15 +172,23 @@ class ProactiveScheduler:
         self.on_message_received(chat_id, chat_type)
 
     def _get_personality_text(self) -> str:
-        # 只使用自定义人格
-        return self.config.get("personality_custom", "").strip() or "一个友好的聊天机器人"
+        custom = self.config.get("personality_custom", "").strip()
+        if custom:
+            return custom
+        try:
+            personality = self.context.get_personality()
+            if personality and personality.description:
+                return personality.description
+        except Exception:
+            pass
+        return "一个友好的聊天机器人"
 
     def _get_llm_client(self):
         if self._llm_client is None:
             llm_provider = self.config.get("llm_provider", "")
             llm_api_key = self.config.get("llm_api_key", "")
             if not llm_provider or not llm_api_key:
-                return None   # 降级到系统默认
+                return None
             personality_text = self._get_personality_text()
             try:
                 self._llm_client = LLMClient(self.config, personality_text)
