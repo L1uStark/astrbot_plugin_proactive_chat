@@ -4,7 +4,7 @@ from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
 from .proactive_scheduler import ProactiveScheduler
 
-@register("proactive_chat", "L1uStark", "主动聊天插件，支持沉默触发、自我学习", "1.3.0")
+@register("proactive_chat", "L1uStark", "主动聊天插件，支持沉默触发、自我学习", "1.3.2")
 class ProactiveChatPlugin(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -42,16 +42,31 @@ class ProactiveChatPlugin(Star):
         else:
             return
 
-        # 过滤输入状态：提取消息文本，若为空则忽略（不打断沉默）
-        message_text = ""
+        # 获取原始消息
         raw_message = getattr(event.message_obj, 'message', [])
-        if isinstance(raw_message, list):
-            for seg in raw_message:
-                if isinstance(seg, dict) and seg.get('type') == 'text':
-                    message_text += seg.get('data', {}).get('text', '')
-        # 如果没有任何文字内容，说明是输入状态或其他通知，直接跳过
-        if not message_text.strip():
-            logger.info(f"[调试] {chat_type} {chat_id} 空消息（输入状态），忽略")
+        if not isinstance(raw_message, list) or len(raw_message) == 0:
+            logger.info(f"[调试] {chat_type} {chat_id} 空消息或输入状态，忽略")
+            return
+
+        # 提取所有消息段的类型，用于日志输出
+        seg_types = []
+        has_content = False
+        for seg in raw_message:
+            if isinstance(seg, dict):
+                seg_type = seg.get('type', 'unknown')
+                seg_types.append(seg_type)
+                # 统一转小写判断，兼容所有大小写变体
+                seg_type_lower = seg_type.lower()
+                if seg_type_lower in ('text', 'plain', 'image', 'at', 'reply', 'face', 'video', 'file', 'audio', 'record'):
+                    has_content = True
+            else:
+                seg_types.append(str(type(seg).__name__))
+
+        # 打印消息段类型，便于排查
+        logger.info(f"[调试] {chat_type} {chat_id} 消息段类型: {seg_types}")
+
+        if not has_content:
+            logger.info(f"[调试] {chat_type} {chat_id} 无有效内容（输入状态等），忽略")
             return
 
         # 注册会话并记录消息时间
