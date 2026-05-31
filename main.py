@@ -19,47 +19,28 @@ class ProactiveChatPlugin(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent):
-        # 强制日志，无论什么消息都输出
-        logger.info(f"[调试] on_message 被触发")
+        group_id = str(event.get_group_id() or "").strip()
+        sender_id = str(event.get_sender_id() or "").strip()
 
-        # 方法1: 通过 message_obj 获取消息类型
-        msg_type = getattr(event.message_obj, 'message_type', None)
-        logger.info(f"[调试] msg_type = {msg_type}")
-
-        # 方法2: 通过 get_group_id 判断
-        group_id = event.get_group_id()
-        logger.info(f"[调试] group_id = {group_id}")
-
-        # 方法3: 通过 get_sender_id 获取发送者
-        sender_id = event.get_sender_id()
-        logger.info(f"[调试] sender_id = {sender_id}")
-
-        if msg_type == 'group':
+        if group_id:
             chat_type = "group"
-            chat_id = str(group_id)
+            chat_id = group_id
             if not self.config.get("group_enabled", True):
-                logger.info(f"[调试] 群聊开关关闭，跳过")
                 return
             allowed = self.config.get("group_allowed_ids", [])
             if allowed and chat_id not in [str(a) for a in allowed]:
-                logger.info(f"[调试] 群 {chat_id} 不在白名单")
                 return
-        elif msg_type == 'private':
+        elif sender_id:
             chat_type = "private"
-            chat_id = str(sender_id)
+            chat_id = sender_id
             if not self.config.get("private_enabled", True):
-                logger.info(f"[调试] 私聊开关关闭，跳过")
                 return
             allowed = self.config.get("private_allowed_ids", [])
             if allowed and chat_id not in [str(a) for a in allowed]:
-                logger.info(f"[调试] 私聊 {chat_id} 不在白名单")
                 return
         else:
-            # 可能是输入状态、通知等，忽略
-            logger.info(f"[调试] 无法识别的消息类型: {msg_type}，忽略")
             return
 
-        # 注册会话
         self.proactive_scheduler.register_origin(chat_id, chat_type, event.unified_msg_origin)
         self.proactive_scheduler.on_message_received(chat_id, chat_type)
 
