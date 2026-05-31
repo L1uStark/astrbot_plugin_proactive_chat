@@ -19,6 +19,7 @@ class SessionState:
         self.phase = "waiting"
         self.phase_start = None
         self.origin = None
+        self.last_dice_time = None  # 上次掷骰子的时间
 
 class ProactiveScheduler:
     def __init__(self, plugin_instance):
@@ -80,6 +81,7 @@ class ProactiveScheduler:
         state.last_message_time = datetime.now()
         state.phase = "waiting"
         state.phase_start = None
+        state.last_dice_time = None  # 重置掷骰计时
         logger.info(f"[调试] {chat_type} {chat_id} 收到消息，重置为静默等待")
 
     async def _loop(self):
@@ -127,6 +129,7 @@ class ProactiveScheduler:
         prob1 = self.learner.get_dynamic_param("phase1_prob", self.config.get(f"{chat_type}_phase1_prob", 0.15))
         dur2 = self.learner.get_dynamic_param("phase2_duration", self.config.get(f"{chat_type}_phase2_duration", 60))
         prob2 = self.learner.get_dynamic_param("phase2_prob", self.config.get(f"{chat_type}_phase2_prob", 0.6))
+        check_interval = self.config.get(f"{chat_type}_check_interval", 8)  # 新增：掷骰间隔
 
         if state.last_message_time is None:
             state.last_message_time = now
@@ -139,21 +142,39 @@ class ProactiveScheduler:
             if silent_minutes >= wait:
                 state.phase = "phase1"
                 state.phase_start = now
+                state.last_dice_time = None
                 logger.info(f"[调试] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
             return
 
-        elif state.phase == "phase1":
+        # 检查是否应该掷骰子
+        should_dice = False
+        if state.last_dice_time is None:
+            should_dice = True
+        else:
+            since_last_dice = (now - state.last_dice_time).total_seconds() / 60
+            if since_last_dice >= check_interval:
+                should_dice = True
+
+        if not should_dice:
+            return
+
+        state.last_dice_time = now
+
+        if state.phase == "phase1":
             elapsed1 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
             if elapsed1 >= dur1:
                 state.phase = "phase2"
                 state.phase_start = now
+                state.last_dice_time = None
                 logger.info(f"[调试] {chat_type} {chat_id} 进入第二阶段")
                 return
-            if int(silent_minutes) % 8 == 0 and (now - state.last_message_time).seconds % 480 < 60:
-                if random.random() < prob1:
-                    logger.info(f"[调试] {chat_type} {chat_id} 第一阶段掷骰成功，准备发言")
-                    await self._trigger_speak(chat_id, chat_type, state)
-                    return
+            # 掷骰子
+            dice = random.random()
+            logger.info(f"[调试] {chat_type} {chat_id} 第一阶段掷骰: {dice:.3f} (阈值: {prob1})")
+            if dice < prob1:
+                logger.info(f"[调试] {chat_type} {chat_id} 第一阶段掷骰成功，准备发言")
+                await self._trigger_speak(chat_id, chat_type, state)
+                return
 
         elif state.phase == "phase2":
             elapsed2 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
@@ -161,11 +182,12 @@ class ProactiveScheduler:
                 logger.info(f"[调试] {chat_type} {chat_id} 第二阶段超时，强制发言")
                 await self._trigger_speak(chat_id, chat_type, state)
                 return
-            if int(silent_minutes) % 8 == 0 and (now - state.last_message_time).seconds % 480 < 60:
-                if random.random() < prob2:
-                    logger.info(f"[调试] {chat_type} {chat_id} 第二阶段掷骰成功，准备发言")
-                    await self._trigger_speak(chat_id, chat_type, state)
-                    return
+            dice = random.random()
+            logger.info(f"[调试] {chat_type} {chat_id} 第二阶段掷骰: {dice:.3f} (阈值: {prob2})")
+            if dice < prob2:
+                logger.info(f"[调试] {chat_type} {chat_id} 第二阶段掷骰成功，准备发言")
+                await self._trigger_speak(chat_id, chat_type, state)
+                return
 
     async def _trigger_speak(self, chat_id: str, chat_type: ChatType, state: SessionState):
         await self._send_proactive_message(state.origin, chat_id, chat_type)
