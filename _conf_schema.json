@@ -140,25 +140,25 @@
     "description": "历史话题权重",
     "type": "int",
     "default": 1,
-    "hint": "全局有效"
+    "hint": "根据上下文历史消息生成的话题，当数值为 0 表示剔除"
   },
   "weight_knowledge": {
     "description": "知识话题权重",
     "type": "int",
     "default": 1,
-    "hint": "全局有效"
+    "hint": "插件内置的、基于当前时间和季节自动生成的话题，当数值为 0 表示剔除"
   },
   "weight_preset": {
     "description": "预设话题权重",
     "type": "int",
     "default": 1,
-    "hint": "全局有效"
+    "hint": "默认生成的话题，当数值为 0 表示剔除"
   },
   "weight_custom": {
     "description": "自定义话题权重",
     "type": "int",
     "default": 1,
-    "hint": "全局有效"
+    "hint": "当数值为 0 表示剔除"
   },
   "custom_topics": {
     "description": "自定义话题关键词列表",
