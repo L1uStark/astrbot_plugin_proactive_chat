@@ -130,6 +130,12 @@
     "default": 8,
     "hint": "多久进行一次概率检测"
   },
+  "max_consecutive_speaks": {
+    "description": "连续主动发言的最大次数",
+    "type": "int",
+    "default": 1,
+    "hint": "全局有效，设为 0 表示不限制"
+  },
   "weight_history": {
     "description": "历史话题权重",
     "type": "int",
