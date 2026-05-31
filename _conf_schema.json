@@ -30,12 +30,14 @@
   "group_start_time": {
     "description": "群聊允许发言开始时间",
     "type": "string",
-    "default": "08:00"
+    "default": "08:00",
+    "hint": "格式必须为 HH:MM"
   },
   "group_end_time": {
     "description": "群聊允许发言结束时间",
     "type": "string",
-    "default": "23:00"
+    "default": "23:00",
+    "hint": "格式必须为 HH:MM"
   },
   "group_allowed_ids": {
     "description": "群聊白名单（群ID列表）",
@@ -68,6 +70,12 @@
     "type": "float",
     "default": 0.6
   },
+  "group_check_interval": {
+    "description": "群聊检测间隔（分钟）",
+    "type": "int",
+    "default": 8,
+    "hint": "多久进行一次概率检测"
+  },
   "private_enabled": {
     "description": "私聊主动发言",
     "type": "bool",
@@ -76,12 +84,14 @@
   "private_start_time": {
     "description": "私聊允许发言开始时间",
     "type": "string",
-    "default": "08:00"
+    "default": "08:00",
+    "hint": "格式必须为 HH:MM"
   },
   "private_end_time": {
     "description": "私聊允许发言结束时间",
     "type": "string",
-    "default": "23:00"
+    "default": "23:00",
+    "hint": "格式必须为 HH:MM"
   },
   "private_allowed_ids": {
     "description": "私聊白名单（用户ID列表）",
@@ -114,30 +124,41 @@
     "type": "float",
     "default": 0.8
   },
+  "private_check_interval": {
+    "description": "私聊检测间隔（分钟）",
+    "type": "int",
+    "default": 8,
+    "hint": "多久进行一次概率检测"
+  },
   "weight_history": {
     "description": "历史话题权重",
     "type": "int",
-    "default": 1
+    "default": 1,
+    "hint": "全局有效"
   },
   "weight_knowledge": {
     "description": "知识话题权重",
     "type": "int",
-    "default": 1
+    "default": 1,
+    "hint": "全局有效"
   },
   "weight_preset": {
     "description": "预设话题权重",
     "type": "int",
-    "default": 1
+    "default": 1,
+    "hint": "全局有效"
   },
   "weight_custom": {
     "description": "自定义话题权重",
     "type": "int",
-    "default": 1
+    "default": 1,
+    "hint": "全局有效"
   },
   "custom_topics": {
     "description": "自定义话题关键词列表",
     "type": "list",
-    "default": ["美食", "天气", "原神"]
+    "default": ["美食", "天气", "原神"],
+    "hint": "全局有效"
   },
   "llm_provider": {
     "description": "LLM 提供商",
@@ -166,6 +187,6 @@
     "description": "学习状态（只读）",
     "type": "text",
     "default": "尚未学习，请等待首次每日学习任务运行。",
-    "hint"每次开启插件设置会自更新，前提是你有学习任务"
+    "hint"每次点开插件设置会自更新，前提是你有学习任务"
   }
 }
