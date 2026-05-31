@@ -20,7 +20,7 @@ class SessionState:
         self.phase_start = None
         self.origin = None
         self.last_dice_time = None
-        self.consecutive_speaks = 0  # 连续主动发言次数
+        self.consecutive_speaks = 0
 
 class ProactiveScheduler:
     def __init__(self, plugin_instance):
@@ -83,20 +83,21 @@ class ProactiveScheduler:
         state.phase = "waiting"
         state.phase_start = None
         state.last_dice_time = None
-        state.consecutive_speaks = 0  # 新消息到来，重置计数器
+        state.consecutive_speaks = 0
         logger.info(f"[调试] {chat_type} {chat_id} 收到消息，重置为静默等待（计数器已清零）")
 
     async def _loop(self):
+        logger.info("[调试] 调度循环已启动")
         while self._running:
-            await asyncio.sleep(60)
-            if not self.config.get("enabled", True):
-                continue
             try:
-                logger.info(f"[调试] 开始检查会话...")
+                await asyncio.sleep(60)
+                if not self.config.get("enabled", True):
+                    continue
+                logger.info("[调试] 开始检查会话...")
                 await self._check_all("group")
                 await self._check_all("private")
             except Exception as e:
-                logger.error(f"调度循环出错: {e}")
+                logger.error(f"调度循环出错: {e}", exc_info=True)
 
     async def _check_all(self, chat_type: ChatType):
         if not self.config.get(f"{chat_type}_enabled", True):
@@ -126,10 +127,9 @@ class ProactiveScheduler:
             await self._process_session(chat_id, chat_type, state, now)
 
     async def _process_session(self, chat_id: str, chat_type: ChatType, state: SessionState, now: datetime):
-        max_consecutive = self.config.get("max_consecutive_speaks", 1)
-        # 如果已达到连续发言上限，暂停计时，直到新消息重置
+        max_consecutive = self.config.get(f"{chat_type}_max_consecutive_speaks", 1)
         if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
-            logger.info(f"[调试] {chat_type} {chat_id} 连续发言已达上限（{max_consecutive}次），暂停计时")
+            logger.info(f"[调试] {chat_type} {chat_id} 连续发言已达上限，暂停计时")
             return
 
         wait = self.learner.get_dynamic_param("silence_wait", self.config.get(f"{chat_type}_silence_wait", 10))
@@ -197,19 +197,16 @@ class ProactiveScheduler:
 
     async def _trigger_speak(self, chat_id: str, chat_type: ChatType, state: SessionState):
         await self._send_proactive_message(state.origin, chat_id, chat_type)
-        # 增加连续发言计数
-        max_consecutive = self.config.get("max_consecutive_speaks", 1)
+        max_consecutive = self.config.get(f"{chat_type}_max_consecutive_speaks", 1)
         state.consecutive_speaks += 1
         logger.info(f"[调试] {chat_type} {chat_id} 连续发言次数: {state.consecutive_speaks}/{max_consecutive}")
         if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
-            # 达到上限，重置会话状态，停止计时
-            state.last_message_time = None  # 这样就不会再进入 phase
+            state.last_message_time = None
             state.phase = "waiting"
             state.phase_start = None
             state.last_dice_time = None
             logger.info(f"[调试] {chat_type} {chat_id} 已达连续发言上限，暂停计时，等待新消息")
         else:
-            # 未达上限，正常重置计时（视为机器人发言，所以也要更新最后消息时间）
             self.on_message_received(chat_id, chat_type)
 
     def _get_personality_text(self) -> str:
@@ -243,28 +240,16 @@ class ProactiveScheduler:
             llm_tools = self.context.get_llm_tools()
             if llm_tools:
                 personality_text = self._get_personality_text()
-                examples = self.learner.learned_params.get("example_phrases", [])
-                example_text = ""
-                if examples:
-                    sample = random.sample(examples, min(3, len(examples)))
-                    example_text = "以下是群友近期的聊天风格示例（仅作语气参考，不要照搬内容）：\n"
-                    example_text += "\n".join([f"- {s}" for s in sample]) + "\n"
-                    example_text += "请结合自身的人设，形成有自己特色的发言。"
-                
                 audience = "大家" if chat_type == "group" else "你"
                 prompt = (
                     f"你的人设：{personality_text}\n"
-                    f"{example_text}"
                     f"根据以下话题提示生成一句主动聊天消息，对象是{audience}。\n"
                     f"话题提示：{topic_prompt}\n"
-                    f"要求：自然、简短（不超过50字），不要加引号。"
+                    f"要求：自然、简短（不超过30字），不要加引号。"
                 )
                 response = await llm_tools.text_chat(prompt)
                 if response:
                     return response.strip()
-                else:
-                    logger.warning("系统 LLM 返回空响应")
-                    return None
         except Exception as e:
             logger.error(f"系统LLM生成失败: {e}")
         return None
@@ -290,55 +275,33 @@ class ProactiveScheduler:
 
         if source == "preset":
             message = self.topic_manager.get_preset_topic(chat_type)
-        elif source == "custom":
-            topic_prompt = self.topic_manager.get_custom_topic()
-            if not topic_prompt:
-                logger.warning("自定义主题列表为空，降级到预设话题")
-                message = self.topic_manager.get_preset_topic(chat_type)
-            else:
+        else:
+            topic_prompt = None
+            if source == "custom":
+                topic_prompt = self.topic_manager.get_custom_topic()
+                if not topic_prompt:
+                    message = self.topic_manager.get_preset_topic(chat_type)
+            elif source == "knowledge":
+                topic_prompt = self.topic_manager.get_knowledge_topic(chat_type)
+            elif source == "history":
+                topic_prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
+                if not topic_prompt:
+                    message = self.topic_manager.get_preset_topic(chat_type)
+
+            if topic_prompt and message is None:
                 llm_client = self._get_llm_client()
                 try:
                     if llm_client:
                         message = await llm_client.generate_response(topic_prompt, chat_type)
                     else:
                         message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
-                    if not message:
-                        message = self.topic_manager.get_preset_topic(chat_type)
-                except Exception as e:
-                    logger.error(f"LLM生成失败: {e}，降级预设")
-                    message = self.topic_manager.get_preset_topic(chat_type)
-        elif source == "knowledge":
-            topic_prompt = self.topic_manager.get_knowledge_topic(chat_type)
-            llm_client = self._get_llm_client()
-            try:
-                if llm_client:
-                    message = await llm_client.generate_response(topic_prompt, chat_type)
-                else:
-                    message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
-                if not message:
-                    message = self.topic_manager.get_preset_topic(chat_type)
-            except Exception as e:
-                logger.error(f"LLM生成失败: {e}，降级预设")
-                message = self.topic_manager.get_preset_topic(chat_type)
-        elif source == "history":
-            topic_prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
-            if not topic_prompt:
-                logger.warning("历史话题获取失败，降级到预设话题")
-                message = self.topic_manager.get_preset_topic(chat_type)
-            else:
-                llm_client = self._get_llm_client()
-                try:
-                    if llm_client:
-                        message = await llm_client.generate_response(topic_prompt, chat_type)
-                    else:
-                        message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
-                    if not message:
+                    if not isinstance(message, str) or not message.strip():
                         message = self.topic_manager.get_preset_topic(chat_type)
                 except Exception as e:
                     logger.error(f"LLM生成失败: {e}，降级预设")
                     message = self.topic_manager.get_preset_topic(chat_type)
 
-        # 最终兜底
+        # 最终强制转换
         if not isinstance(message, str) or not message.strip():
             message = "今天想聊点什么呢？"
         else:
@@ -346,12 +309,19 @@ class ProactiveScheduler:
 
         await self._send_raw_message(origin, message, chat_id, chat_type)
 
-    async def _send_raw_message(self, origin, message: str, chat_id: str, chat_type: ChatType):
-        if not isinstance(message, str) or not message.strip():
+    async def _send_raw_message(self, origin, message, chat_id: str, chat_type: ChatType):
+        if message is None:
+            message = ""
+        if not isinstance(message, str):
+            message = str(message)
+        if not message.strip():
             message = "今天想聊点什么呢？"
+
+        logger.info(f"[调试] 最终发送消息: type={type(message).__name__}, len={len(message)}")
         try:
-            message_chain = MessageChain().message(Plain(text=message))
-            await self.context.send_message(origin, message_chain)
+            # 正确的构造方式：使用 MessageChain 包装 Plain 列表
+            chain = MessageChain([Plain(text=message)])
+            await self.context.send_message(origin, chain)
             logger.info(f"✓ 主动消息已发送 -> {chat_type} {chat_id}: {message[:50]}...")
         except Exception as e:
-            logger.error(f"✗ 发送失败: {e}")
+            logger.error(f"✗ 发送失败: {e}", exc_info=True)
