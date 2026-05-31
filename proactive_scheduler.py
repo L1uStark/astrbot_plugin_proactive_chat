@@ -19,7 +19,7 @@ class SessionState:
         self.phase = "waiting"
         self.phase_start = None
         self.origin = None
-        self.last_dice_time = None  # 上次掷骰子的时间
+        self.last_dice_time = None
 
 class ProactiveScheduler:
     def __init__(self, plugin_instance):
@@ -43,7 +43,8 @@ class ProactiveScheduler:
         self._running = True
         self._task = asyncio.create_task(self._loop())
         self._learn_task = asyncio.create_task(self._daily_learn_scheduler())
-        logger.info("沉默触发调度器已启动，每日学习已安排")
+        # 不再进行任何初始化，完全依赖实际消息驱动
+        logger.info("沉默触发调度器已启动，每日学习已安排（等待消息触发）")
 
     def stop(self):
         self._running = False
@@ -81,7 +82,7 @@ class ProactiveScheduler:
         state.last_message_time = datetime.now()
         state.phase = "waiting"
         state.phase_start = None
-        state.last_dice_time = None  # 重置掷骰计时
+        state.last_dice_time = None
         logger.info(f"[调试] {chat_type} {chat_id} 收到消息，重置为静默等待")
 
     async def _loop(self):
@@ -129,7 +130,7 @@ class ProactiveScheduler:
         prob1 = self.learner.get_dynamic_param("phase1_prob", self.config.get(f"{chat_type}_phase1_prob", 0.15))
         dur2 = self.learner.get_dynamic_param("phase2_duration", self.config.get(f"{chat_type}_phase2_duration", 60))
         prob2 = self.learner.get_dynamic_param("phase2_prob", self.config.get(f"{chat_type}_phase2_prob", 0.6))
-        check_interval = self.config.get(f"{chat_type}_check_interval", 8)  # 新增：掷骰间隔
+        check_interval = self.config.get(f"{chat_type}_check_interval", 8)
 
         if state.last_message_time is None:
             state.last_message_time = now
@@ -168,7 +169,6 @@ class ProactiveScheduler:
                 state.last_dice_time = None
                 logger.info(f"[调试] {chat_type} {chat_id} 进入第二阶段")
                 return
-            # 掷骰子
             dice = random.random()
             logger.info(f"[调试] {chat_type} {chat_id} 第一阶段掷骰: {dice:.3f} (阈值: {prob1})")
             if dice < prob1:
