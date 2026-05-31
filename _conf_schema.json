@@ -7,7 +7,8 @@
   "debug_log": {
     "description": "是否输出详细调试日志",
     "type": "bool",
-    "default": false
+    "default": true,
+    "hint": "关掉他，Astrbot日志将容不下他，并且你不知道他出了什么问题"
   },
   "personality_custom": {
     "description": "自定义人格描述",
@@ -18,12 +19,13 @@
   "enable_context_history": {
     "description": "是否读取上下文历史消息来延续话题",
     "type": "bool",
-    "default": true
+    "default": true,
+    "hint": "将聊天的上下文注入提示词内一同输入给大模型"
   },
   "group_enabled": {
     "description": "群聊主动发言",
     "type": "bool",
-    "default": true
+    "default": false
   },
   "group_start_time": {
     "description": "群聊允许发言开始时间",
@@ -69,7 +71,7 @@
   "private_enabled": {
     "description": "私聊主动发言",
     "type": "bool",
-    "default": true
+    "default": false
   },
   "private_start_time": {
     "description": "私聊允许发言开始时间",
@@ -163,6 +165,7 @@
   "learning_status": {
     "description": "学习状态（只读）",
     "type": "text",
-    "default": "尚未学习，请等待首次每日学习任务运行。"
+    "default": "尚未学习，请等待首次每日学习任务运行。",
+    "hint"每次开启插件设置会自更新，前提是你有学习任务"
   }
 }
