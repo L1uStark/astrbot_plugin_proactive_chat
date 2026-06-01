@@ -44,7 +44,7 @@ class ProactiveScheduler:
         self._running = True
         self._task = asyncio.create_task(self._loop())
         self._learn_task = asyncio.create_task(self._daily_learn_scheduler())
-        logger.info("沉默触发调度器已启动，每日学习已安排（等待消息触发）")
+        logger.info("[日志] 沉默触发调度器已启动，每日学习已安排（等待消息触发）")
 
     def stop(self):
         self._running = False
@@ -52,7 +52,7 @@ class ProactiveScheduler:
             self._task.cancel()
         if self._learn_task:
             self._learn_task.cancel()
-        logger.info("沉默触发调度器已停止")
+        logger.info("[日志] 沉默触发调度器已停止")
 
     async def _daily_learn_scheduler(self):
         while self._running:
@@ -99,17 +99,32 @@ class ProactiveScheduler:
             except Exception as e:
                 logger.error(f"调度循环出错: {e}", exc_info=True)
 
+    def _is_in_time_window(self, start_str: str, end_str: str) -> bool:
+        """判断当前时间是否在允许的时间窗口内，支持跨日"""
+        now = datetime.now()
+        start_min = time_str_to_minutes(start_str)
+        end_min = time_str_to_minutes(end_str)
+        now_min = now.hour * 60 + now.minute
+
+        if start_min <= end_min:
+            # 不跨日：08:00 - 23:00
+            return start_min <= now_min <= end_min
+        else:
+            # 跨日：22:00 - 02:00
+            return now_min >= start_min or now_min <= end_min
+
     async def _check_all(self, chat_type: ChatType):
         if not self.config.get(f"{chat_type}_enabled", True):
             logger.info(f"[日志] {chat_type} 总开关未开启")
             return
-        now = datetime.now()
+
+        # 时间窗口判断
         start_key = f"{chat_type}_start_time"
         end_key = f"{chat_type}_end_time"
-        start_min = time_str_to_minutes(self.config.get(start_key, "00:00"))
-        end_min = time_str_to_minutes(self.config.get(end_key, "23:59"))
-        now_min = now.hour * 60 + now.minute
-        if not (start_min <= now_min <= end_min):
+        if not self._is_in_time_window(
+            self.config.get(start_key, "00:00"),
+            self.config.get(end_key, "23:59")
+        ):
             logger.info(f"[日志] {chat_type} 不在允许时间段内")
             return
 
@@ -124,7 +139,7 @@ class ProactiveScheduler:
             if not state.origin:
                 logger.info(f"[日志] {chat_type} {chat_id} 缺少 origin，跳过")
                 continue
-            await self._process_session(chat_id, chat_type, state, now)
+            await self._process_session(chat_id, chat_type, state, datetime.now())
 
     async def _process_session(self, chat_id: str, chat_type: ChatType, state: SessionState, now: datetime):
         max_consecutive = self.config.get(f"{chat_type}_max_consecutive_speaks", 1)
@@ -255,7 +270,7 @@ class ProactiveScheduler:
         return None
 
     async def _send_proactive_message(self, origin, chat_id: str, chat_type: ChatType):
-        logger.info(f"准备为 {chat_type} {chat_id} 生成主动消息")
+        logger.info(f"[日志] 准备为 {chat_type} {chat_id} 生成主动消息")
         weights = {
             "history": self.config.get("weight_history", 30),
             "knowledge": self.config.get("weight_knowledge", 25),
