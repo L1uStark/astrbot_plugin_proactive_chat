@@ -51,9 +51,14 @@ class ProactiveChatPlugin(Star):
         except:
             return
 
-        # 注册并重置计时
+        # 注册 origin（无论是否在时间段内，都需要保存 origin，否则时间段内找不到会话）
         self.proactive_scheduler.register_origin(chat_id, chat_type, event.unified_msg_origin)
-        self.proactive_scheduler.on_message_received(chat_id, chat_type)
+        
+        # 只有在允许时间段内收到消息，才更新计时
+        if self.proactive_scheduler.is_in_time_window(chat_type):
+            self.proactive_scheduler.on_message_received(chat_id, chat_type)
+        else:
+            logger.info(f"[日志] {chat_type} {chat_id} 在非允许时间段收到消息，已保存 origin 但不重置计时")
 
     async def terminate(self):
         logger.info("主动聊天插件正在卸载...")
