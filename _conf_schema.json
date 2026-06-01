@@ -31,13 +31,13 @@
     "description": "群聊允许发言开始时间",
     "type": "string",
     "default": "08:00",
-    "hint": "格式必须为 HH:MM"
+    "hint": "格式为 HH:MM，支持跨日，例如 22:00 至 02:00 表示当晚到次日凌晨"
   },
   "group_end_time": {
     "description": "群聊允许发言结束时间",
     "type": "string",
     "default": "23:00",
-    "hint": "格式必须为 HH:MM"
+    "hint": "格式为 HH:MM ，若小于开始时间则表示次日"
   },
   "group_allowed_ids": {
     "description": "群聊白名单（群ID列表）",
@@ -85,13 +85,13 @@
     "description": "私聊允许发言开始时间",
     "type": "string",
     "default": "08:00",
-    "hint": "格式必须为 HH:MM"
+    "hint": "格式为 HH:MM ，支持跨日，例如 22:00 至 02:00 表示当晚到次日凌晨"
   },
   "private_end_time": {
     "description": "私聊允许发言结束时间",
     "type": "string",
     "default": "23:00",
-    "hint": "格式必须为 HH:MM"
+    "hint": "格式为 HH:MM ，若小于开始时间则表示次日"
   },
   "private_allowed_ids": {
     "description": "私聊白名单（用户ID列表）",
