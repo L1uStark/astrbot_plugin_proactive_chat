@@ -3,9 +3,7 @@ import os
 import random
 from datetime import datetime
 from typing import Dict, List, Optional, Literal
-import logging
-
-logger = logging.getLogger(__name__)
+from astrbot.api import logger
 
 ChatType = Literal["group", "private"]
 
@@ -53,7 +51,7 @@ class TopicManager:
             return "今天想聊点什么呢？"
         return random.choice(topics)
     
-    def get_custom_topic(self) -> str:
+    def get_custom_topic(self) -> Optional[str]:
         """获取随机一个自定义话题关键词（如“美食”、“原神”），供LLM生成具体内容"""
         if not self.custom_topics:
             logger.warning("自定义主题列表为空，降级到预设话题")
@@ -92,7 +90,7 @@ class TopicManager:
             return f"现在是{season}的{time_desc}，请主动和你聊聊季节变化、天气或最近的节日。"
     
     def get_history_topic(self, chat_type: ChatType, chat_id: str, limit: int = 10) -> Optional[str]:
-        """基于历史消息生成话题描述（提供给LLM）"""
+        """基于历史消息，让 LLM 自己判断该聊什么话题（去掉调侃，只允许延续或开启新话题）"""
         if not self.enable_context:
             return None
         try:
@@ -106,12 +104,25 @@ class TopicManager:
                 sender = getattr(msg, 'sender_name', '用户')
                 content = getattr(msg, 'content', str(msg))
                 recent_msgs.append(f"{sender}: {content}")
-            if recent_msgs:
-                if chat_type == "group":
-                    return "根据以下最近的群聊内容，延续对话话题：" + " | ".join(recent_msgs)
-                else:
-                    return "根据以下你们最近的对话，延续对话话题：" + " | ".join(recent_msgs)
-            return None
+            if not recent_msgs:
+                return None
+            
+            # 构建上下文摘要，让 LLM 自己决定话题方向（只允许延续或开启新话题）
+            context_text = "\n".join(recent_msgs)
+            if chat_type == "group":
+                return (
+                    f"以下是最近的群聊内容：\n{context_text}\n\n"
+                    "请根据以上内容，判断现在应该聊什么话题最合适。"
+                    "你可以延续当前话题，或者开启一个新话题。"
+                    "请用一句话描述你要聊的话题方向，不要直接生成最终消息。"
+                )
+            else:
+                return (
+                    f"以下是你们最近的对话内容：\n{context_text}\n\n"
+                    "请根据以上内容，判断现在应该聊什么话题最合适。"
+                    "你可以延续当前话题，或者开启一个新话题。"
+                    "请用一句话描述你要聊的话题方向，不要直接生成最终消息。"
+                )
         except Exception as e:
             logger.error(f"获取历史消息失败: {e}")
             return None
