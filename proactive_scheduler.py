@@ -235,13 +235,15 @@ class ProactiveScheduler:
         state.consecutive_speaks += 1
         logger.info(f"[日志] {chat_type} {chat_id} 连续发言次数: {state.consecutive_speaks}/{max_consecutive}")
         if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
+            # 达到上限，暂停计时，等待用户新消息
             state.last_message_time = None
             state.phase = "waiting"
             state.phase_start = None
             state.last_dice_time = None
             logger.info(f"[日志] {chat_type} {chat_id} 已达连续发言上限，暂停计时，等待新消息")
         else:
-            self.on_message_received(chat_id, chat_type)
+            # 未达上限，只增加计数器，不重置 last_message_time
+            logger.info(f"[日志] {chat_type} {chat_id} 未达连续发言上限，继续计时")
 
     def _get_personality_text(self) -> str:
         custom = self.config.get("personality_custom", "").strip()
