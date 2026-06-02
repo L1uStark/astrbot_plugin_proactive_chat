@@ -86,7 +86,7 @@ class ProactiveScheduler:
         logger.info(f"[日志] {chat_type} {chat_id} 收到消息，重置为静默等待（计数器已清零）")
 
     def is_in_time_window(self, chat_type: ChatType) -> bool:
-        """判断当前时间是否在允许的时间窗口内，供 main.py 调用"""
+        """判断当前时间是否在允许的时间窗口内"""
         start_key = f"{chat_type}_start_time"
         end_key = f"{chat_type}_end_time"
         start_str = self.config.get(start_key, "00:00")
@@ -132,7 +132,6 @@ class ProactiveScheduler:
         start_str = self.config.get(start_key, "00:00")
         start_min = time_str_to_minutes(start_str)
         now = datetime.now()
-        now_min = now.hour * 60 + now.minute
 
         logger.info(f"[日志] {chat_type} 触发检查: 当前活跃会话数={len(sessions)}")
         for chat_id, state in list(sessions.items()):
@@ -142,19 +141,15 @@ class ProactiveScheduler:
                 continue
 
             # 如果 last_message_time 在允许时间段开始之前，将其重置为当前时间
-            # 这样可以避免机器人一进入允许时间段就立刻发言
             if state.last_message_time is not None:
                 last_min = state.last_message_time.hour * 60 + state.last_message_time.minute
-                # 跨日情况：结束时间小于开始时间，表示允许时段跨过午夜
                 end_str = self.config.get(f"{chat_type}_end_time", "23:59")
                 end_min = time_str_to_minutes(end_str)
                 if start_min <= end_min:
-                    # 不跨日
                     if last_min < start_min:
                         state.last_message_time = now
                         logger.info(f"[日志] {chat_type} {chat_id} 上次消息在允许时间段之前，重置计时为当前时间")
                 else:
-                    # 跨日：允许时段是 start_min ~ 23:59 和 0 ~ end_min
                     if end_min < last_min < start_min:
                         state.last_message_time = now
                         logger.info(f"[日志] {chat_type} {chat_id} 上次消息在允许时间段之前，重置计时为当前时间")
@@ -189,6 +184,24 @@ class ProactiveScheduler:
                 logger.info(f"[日志] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
             return
 
+        # 先检查是否应该切换到下一阶段（不受掷骰间隔影响）
+        if state.phase == "phase1":
+            elapsed1 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
+            if elapsed1 >= dur1:
+                state.phase = "phase2"
+                state.phase_start = now
+                state.last_dice_time = None
+                logger.info(f"[日志] {chat_type} {chat_id} 第一阶段超时，进入第二阶段（已过{elapsed1:.1f}min > {dur1}min）")
+                return
+
+        elif state.phase == "phase2":
+            elapsed2 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
+            if elapsed2 >= dur2:
+                logger.info(f"[日志] {chat_type} {chat_id} 第二阶段超时，强制发言")
+                await self._trigger_speak(chat_id, chat_type, state)
+                return
+
+        # 再检查是否应该掷骰子
         should_dice = False
         if state.last_dice_time is None:
             should_dice = True
@@ -203,32 +216,18 @@ class ProactiveScheduler:
         state.last_dice_time = now
 
         if state.phase == "phase1":
-            elapsed1 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
-            if elapsed1 >= dur1:
-                state.phase = "phase2"
-                state.phase_start = now
-                state.last_dice_time = None
-                logger.info(f"[日志] {chat_type} {chat_id} 进入第二阶段")
-                return
             dice = random.random()
             logger.info(f"[日志] {chat_type} {chat_id} 第一阶段掷骰: {dice:.3f} (阈值: {prob1})")
             if dice < prob1:
                 logger.info(f"[日志] {chat_type} {chat_id} 第一阶段掷骰成功，准备发言")
                 await self._trigger_speak(chat_id, chat_type, state)
-                return
 
         elif state.phase == "phase2":
-            elapsed2 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
-            if elapsed2 >= dur2:
-                logger.info(f"[日志] {chat_type} {chat_id} 第二阶段超时，强制发言")
-                await self._trigger_speak(chat_id, chat_type, state)
-                return
             dice = random.random()
             logger.info(f"[日志] {chat_type} {chat_id} 第二阶段掷骰: {dice:.3f} (阈值: {prob2})")
             if dice < prob2:
                 logger.info(f"[日志] {chat_type} {chat_id} 第二阶段掷骰成功，准备发言")
                 await self._trigger_speak(chat_id, chat_type, state)
-                return
 
     async def _trigger_speak(self, chat_id: str, chat_type: ChatType, state: SessionState):
         await self._send_proactive_message(state.origin, chat_id, chat_type)
