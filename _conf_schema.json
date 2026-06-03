@@ -27,6 +27,12 @@
     "type": "bool",
     "default": false
   },
+  "enable_self_learning": {
+    "description": "是否启用自我学习（学习结果会覆盖群聊的静态配置）",
+    "type": "bool",
+    "default": false,
+    "hint": "关闭后，所有群聊均使用下方静态配置；开启后，每个群会根据自身活跃度自动调整"
+  },
   "group_start_time": {
     "description": "群聊允许发言开始时间",
     "type": "string",
@@ -199,6 +205,6 @@
     "description": "学习状态（只读）",
     "type": "text",
     "default": "尚未学习，请等待首次每日学习任务运行。",
-    "hint": "每次点开插件设置会自更新，前提是你有学习任务"
+    "hint": "每次点开插件设置会自更新，前提是你有学习任务，如果你只是为了看学习状态，请记得不要按保存，插件会因为保存而重置！"
   }
 }
