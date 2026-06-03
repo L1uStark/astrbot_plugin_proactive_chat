@@ -158,7 +158,6 @@ class ProactiveScheduler:
             logger.info(f"[日志] {chat_type} {chat_id} 连续发言已达上限，暂停计时")
             return
 
-        # 根据自我学习开关决定参数来源
         if self.config.get("enable_self_learning", False):
             wait = self.learner.get_dynamic_param_for_group(chat_id, "silence_wait", self.config.get(f"{chat_type}_silence_wait", 10))
             dur1 = self.learner.get_dynamic_param_for_group(chat_id, "phase1_duration", self.config.get(f"{chat_type}_phase1_duration", 40))
@@ -187,7 +186,6 @@ class ProactiveScheduler:
                 logger.info(f"[日志] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
             return
 
-        # 阶段切换检查（不受掷骰间隔影响）
         if state.phase == "phase1":
             elapsed1 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
             if elapsed1 >= dur1:
@@ -204,7 +202,6 @@ class ProactiveScheduler:
                 await self._trigger_speak(chat_id, chat_type, state)
                 return
 
-        # 掷骰子检查
         should_dice = False
         if state.last_dice_time is None:
             should_dice = True
@@ -315,42 +312,61 @@ class ProactiveScheduler:
         probs = [weights[k] / total for k in items]
         source = random.choices(items, weights=probs, k=1)[0]
 
-        logger.info(f"话题来源: {source}")
+        logger.info(f"权重随机选中话题来源: {source}")
+
+        # 降级顺序：历史 → 自定义 → 知识 → 预设
+        fallback_order = ["history", "custom", "knowledge", "preset"]
 
         message = None
 
-        if source == "preset":
-            message = self.topic_manager.get_preset_topic(chat_type)
-        else:
-            topic_prompt = None
-            if source == "custom":
-                topic_prompt = self.topic_manager.get_custom_topic()
-                if not topic_prompt:
-                    message = self.topic_manager.get_preset_topic(chat_type)
-            elif source == "knowledge":
-                topic_prompt = self.topic_manager.get_knowledge_topic(chat_type)
-            elif source == "history":
-                topic_prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
-                if not topic_prompt:
-                    message = self.topic_manager.get_preset_topic(chat_type)
+        async def try_source(src: str) -> str:
+            if src == "preset":
+                return self.topic_manager.get_preset_topic(chat_type)
+            elif src == "custom":
+                prompt = self.topic_manager.get_custom_topic()
+                if not prompt:
+                    return None
+                return await self._call_llm_for_source(prompt, chat_type)
+            elif src == "knowledge":
+                prompt = self.topic_manager.get_knowledge_topic(chat_type)
+                return await self._call_llm_for_source(prompt, chat_type)
+            elif src == "history":
+                prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
+                if not prompt:
+                    return None
+                return await self._call_llm_for_source(prompt, chat_type)
+            return None
 
-            if topic_prompt and message is None:
-                llm_client = self._get_llm_client()
-                try:
-                    if llm_client:
-                        message = await llm_client.generate_response(topic_prompt, chat_type)
-                    else:
-                        message = await self._generate_message_with_system_llm(topic_prompt, chat_type)
-                    if not isinstance(message, str) or not message.strip():
-                        message = self.topic_manager.get_preset_topic(chat_type)
-                except Exception as e:
-                    logger.error(f"LLM生成失败: {e}，降级预设")
-                    message = self.topic_manager.get_preset_topic(chat_type)
+        async def _call_llm_for_source(prompt: str, chat_type: str) -> str:
+            llm_client = self._get_llm_client()
+            try:
+                if llm_client:
+                    msg = await llm_client.generate_response(prompt, chat_type)
+                else:
+                    msg = await self._generate_message_with_system_llm(prompt, chat_type)
+                if isinstance(msg, str) and msg.strip():
+                    return msg.strip()
+            except Exception as e:
+                logger.error(f"LLM 生成失败: {e}")
+            return None
+
+        # 尝试权重选中的来源
+        message = await try_source(source)
+        if message:
+            logger.info(f"权重来源 {source} 生成成功")
+        else:
+            logger.warning(f"权重来源 {source} 失败，开始降级尝试")
+            for fallback_source in fallback_order:
+                if fallback_source == source:
+                    continue
+                message = await try_source(fallback_source)
+                if message:
+                    logger.info(f"降级来源 {fallback_source} 生成成功")
+                    break
 
         if not isinstance(message, str) or not message.strip():
             message = "今天想聊点什么呢？"
-        else:
-            message = message.strip()
+            logger.info("所有话题来源均失败，使用硬编码兜底文案")
 
         await self._send_raw_message(origin, message, chat_id, chat_type)
 
