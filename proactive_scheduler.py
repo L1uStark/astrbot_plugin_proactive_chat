@@ -86,7 +86,6 @@ class ProactiveScheduler:
         logger.info(f"[日志] {chat_type} {chat_id} 收到消息，重置为静默等待（计数器已清零）")
 
     def is_in_time_window(self, chat_type: ChatType) -> bool:
-        """判断当前时间是否在允许的时间窗口内"""
         start_key = f"{chat_type}_start_time"
         end_key = f"{chat_type}_end_time"
         start_str = self.config.get(start_key, "00:00")
@@ -119,7 +118,6 @@ class ProactiveScheduler:
             logger.info(f"[日志] {chat_type} 总开关未开启")
             return
 
-        # 时间窗口判断
         if not self.is_in_time_window(chat_type):
             logger.info(f"[日志] {chat_type} 不在允许时间段内")
             return
@@ -127,7 +125,6 @@ class ProactiveScheduler:
         allowed_ids = self.config.get(f"{chat_type}_allowed_ids", [])
         sessions = self.group_sessions if chat_type == "group" else self.private_sessions
 
-        # 获取允许时间段的起始分钟数，用于重置旧计时
         start_key = f"{chat_type}_start_time"
         start_str = self.config.get(start_key, "00:00")
         start_min = time_str_to_minutes(start_str)
@@ -140,7 +137,6 @@ class ProactiveScheduler:
             if not state.origin:
                 continue
 
-            # 如果 last_message_time 在允许时间段开始之前，将其重置为当前时间
             if state.last_message_time is not None:
                 last_min = state.last_message_time.hour * 60 + state.last_message_time.minute
                 end_str = self.config.get(f"{chat_type}_end_time", "23:59")
@@ -162,11 +158,18 @@ class ProactiveScheduler:
             logger.info(f"[日志] {chat_type} {chat_id} 连续发言已达上限，暂停计时")
             return
 
-        wait = self.learner.get_dynamic_param("silence_wait", self.config.get(f"{chat_type}_silence_wait", 10))
-        dur1 = self.learner.get_dynamic_param("phase1_duration", self.config.get(f"{chat_type}_phase1_duration", 40))
-        prob1 = self.learner.get_dynamic_param("phase1_prob", self.config.get(f"{chat_type}_phase1_prob", 0.15))
-        dur2 = self.learner.get_dynamic_param("phase2_duration", self.config.get(f"{chat_type}_phase2_duration", 60))
-        prob2 = self.learner.get_dynamic_param("phase2_prob", self.config.get(f"{chat_type}_phase2_prob", 0.6))
+        # 根据自我学习开关决定参数来源
+        if self.config.get("enable_self_learning", False):
+            wait = self.learner.get_dynamic_param_for_group(chat_id, "silence_wait", self.config.get(f"{chat_type}_silence_wait", 10))
+            dur1 = self.learner.get_dynamic_param_for_group(chat_id, "phase1_duration", self.config.get(f"{chat_type}_phase1_duration", 40))
+            prob1 = self.learner.get_dynamic_param_for_group(chat_id, "phase1_prob", self.config.get(f"{chat_type}_phase1_prob", 0.15))
+        else:
+            wait = self.config.get(f"{chat_type}_silence_wait", 10)
+            dur1 = self.config.get(f"{chat_type}_phase1_duration", 40)
+            prob1 = self.config.get(f"{chat_type}_phase1_prob", 0.15)
+
+        dur2 = self.config.get(f"{chat_type}_phase2_duration", 60)
+        prob2 = self.config.get(f"{chat_type}_phase2_prob", 0.6)
         check_interval = self.config.get(f"{chat_type}_check_interval", 8)
 
         if state.last_message_time is None:
@@ -184,7 +187,7 @@ class ProactiveScheduler:
                 logger.info(f"[日志] {chat_type} {chat_id} 进入第一阶段（wait={wait}min）")
             return
 
-        # 先检查是否应该切换到下一阶段（不受掷骰间隔影响）
+        # 阶段切换检查（不受掷骰间隔影响）
         if state.phase == "phase1":
             elapsed1 = (now - state.phase_start).total_seconds() / 60 if state.phase_start else 0
             if elapsed1 >= dur1:
@@ -201,7 +204,7 @@ class ProactiveScheduler:
                 await self._trigger_speak(chat_id, chat_type, state)
                 return
 
-        # 再检查是否应该掷骰子
+        # 掷骰子检查
         should_dice = False
         if state.last_dice_time is None:
             should_dice = True
@@ -235,14 +238,12 @@ class ProactiveScheduler:
         state.consecutive_speaks += 1
         logger.info(f"[日志] {chat_type} {chat_id} 连续发言次数: {state.consecutive_speaks}/{max_consecutive}")
         if max_consecutive > 0 and state.consecutive_speaks >= max_consecutive:
-            # 达到上限，暂停计时，等待用户新消息
             state.last_message_time = None
             state.phase = "waiting"
             state.phase_start = None
             state.last_dice_time = None
             logger.info(f"[日志] {chat_type} {chat_id} 已达连续发言上限，暂停计时，等待新消息")
         else:
-            # 未达上限，只增加计数器，不重置 last_message_time
             logger.info(f"[日志] {chat_type} {chat_id} 未达连续发言上限，继续计时")
 
     def _get_personality_text(self) -> str:
@@ -276,9 +277,18 @@ class ProactiveScheduler:
             llm_tools = self.context.get_llm_tools()
             if llm_tools:
                 personality_text = self._get_personality_text()
+                examples = self.learner.get_example_phrases()
+                example_text = ""
+                if examples:
+                    sample = random.sample(examples, min(3, len(examples)))
+                    example_text = "以下是群友近期的聊天风格示例（仅作语气参考，不要照搬内容）：\n"
+                    example_text += "\n".join([f"- {s}" for s in sample]) + "\n"
+                    example_text += "请结合自身的人设，形成有自己特色的发言。"
+                
                 audience = "大家" if chat_type == "group" else "你"
                 prompt = (
                     f"你的人设：{personality_text}\n"
+                    f"{example_text}"
                     f"根据以下话题提示生成一句主动聊天消息，对象是{audience}。\n"
                     f"话题提示：{topic_prompt}\n"
                     f"要求：自然、简短（不超过50字），不要加引号。"
