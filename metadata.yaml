@@ -1,7 +1,7 @@
 name: "proactive_chat"
-version: "1.4.0"
+version: "1.5.0"
 author: "L1uStark"
-description: "主动发言插件，支持沉默触发、多阶段概率、自我学习、群私分离"
+description: "主动聊天插件，支持沉默触发、多阶段概率、连续发言限制、跨日时间段、自我学习、话题降级机制"
 display_name: "Bot也想说说话"
 short_desc: "当机器人也能主动发言，他便成了人"
 astrbot_version: ">=4.0.0" # 声明此插件要求的最低 AstrBot 版本
