@@ -326,15 +326,15 @@ class ProactiveScheduler:
                 prompt = self.topic_manager.get_custom_topic()
                 if not prompt:
                     return None
-                return await self._call_llm_for_source(prompt, chat_type)
+                return await _call_llm_for_source(prompt, chat_type)
             elif src == "knowledge":
                 prompt = self.topic_manager.get_knowledge_topic(chat_type)
-                return await self._call_llm_for_source(prompt, chat_type)
+                return await _call_llm_for_source(prompt, chat_type)
             elif src == "history":
                 prompt = self.topic_manager.get_history_topic(chat_type, chat_id)
                 if not prompt:
                     return None
-                return await self._call_llm_for_source(prompt, chat_type)
+                return await _call_llm_for_source(prompt, chat_type)
             return None
 
         async def _call_llm_for_source(prompt: str, chat_type: str) -> str:
